@@ -14,15 +14,13 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 24db1b11d377c8006dc62ccb19accf56c26b9cbc Changes
-SHA1 873b3556309ef4e7b95775bd4f77ae42821c2a25 MANIFEST
-SHA1 10840ae77159202c449c23254a2126740bf09aff META.yml
-SHA1 a92041764aa5dbaf127752ac1d9ec393e187c36f Makefile.PL
-SHA1 19600c3015af046e01fb123001260b9b45c91777 README
+SHA1 240f975bcbad94ff7292c41bc56da012edeec28d Changes
+SHA1 38f3d3f71ed84006dc19e66d7c2e2b3bf3d3e0d2 MANIFEST
+SHA1 5cc2f5edbf82e19ea11bbd9d15063edd6dc79f24 META.yml
+SHA1 8499580a7bf466c69c688db0243bffbfd92fe265 Makefile.PL
+SHA1 7519282b95cef540a8e09be9eddd8a7d95f956a5 README
 SHA1 32c4e3373f9c302d641e9f3479c4552f0c25cc31 TODO
 SHA1 8c14ee5fbfba51f0b95e85a8035b34782e0b936d bin/shipwright
-SHA1 2894e55317c52e288568cf9df184784b3ffac107 docs/intro
-SHA1 bc6f580442f8af3e18641f22cb76e1225ba97926 docs/tutorial
 SHA1 10cacb3c91a97e02e994c236f5da6e4f60b1ae03 docs/tutorial.log
 SHA1 603bb9de29fb8cba7f13409c546750972eff645d inc/Module/AutoInstall.pm
 SHA1 7e2cfa1b9efe0d502ee57717649c90ba4bd28ba9 inc/Module/Install.pm
@@ -36,20 +34,20 @@ SHA1 7d3be9b158e37b2b2c22084740099955623b1d56 inc/Module/Install/Metadata.pm
 SHA1 92b109a1c78889f8d03eb2b2a1e0c5ea73b7ae72 inc/Module/Install/Scripts.pm
 SHA1 0a8b66180229ba2f9deaea1fedd0aacf7a7ace6b inc/Module/Install/Win32.pm
 SHA1 d3352eb33fe43a5f3ead513f645224fe34d73bc9 inc/Module/Install/WriteAll.pm
-SHA1 2b4fd0dec16aa983079fbf291b09424660a3a196 lib/Shipwright.pm
+SHA1 f2e936df546464e51d3d2ff03b6b31f1eccbdb95 lib/Shipwright.pm
 SHA1 32dddafe181ebc69b2751c90c655997200e4fccf lib/Shipwright/Backend.pm
 SHA1 d3eb444e69ceb66e0dd5a324c6b39a5b50775de9 lib/Shipwright/Backend/SVK.pm
 SHA1 1902a70f42ef86da92c849aeebca7f5952ba494d lib/Shipwright/Backend/SVN.pm
-SHA1 9227925c32f4b5eeae52323e44366b73e47317ab lib/Shipwright/Build.pm
+SHA1 cab22f064d459c364b0948f0d13c132195d9fe3c lib/Shipwright/Build.pm
 SHA1 e0778d1d6df99d05576b9f5900a61ae9cdc4c74f lib/Shipwright/Logger.pm
 SHA1 219b91fd600698497982e5bee03185c74f018023 lib/Shipwright/Script.pm
-SHA1 5b602c955d522d4257b901ee208cff9f7fd5bf5c lib/Shipwright/Script/Build.pm
+SHA1 e1a55231af02174bd4b23d4c6b3af1eb50e047ad lib/Shipwright/Script/Build.pm
 SHA1 aec25e36dcda650c163ff766f8269c2a688dbca2 lib/Shipwright/Script/Help.pm
 SHA1 8c4293dcf942289b9da0e1bf33aec0b9ace496dc lib/Shipwright/Script/Import.pm
 SHA1 ed51e0d16c13efe8d55593bebd6f0a3d0238d14f lib/Shipwright/Script/Initialize.pm
 SHA1 c887cdfa2e166e8fff7e1557588a45d53087fbbf lib/Shipwright/Script/Maintain.pm
 SHA1 11df3343844031710d669198e908bffb18598408 lib/Shipwright/Script/Update.pm
-SHA1 21025b4dd01fddb9be4fa868e9e7b517a8dcc024 lib/Shipwright/Source.pm
+SHA1 71833b865e84719130bf0f8be133f857c1a06879 lib/Shipwright/Source.pm
 SHA1 ec0f0ec8d75dbfa95141159a3a5cd1ff11b57a93 lib/Shipwright/Source/Base.pm
 SHA1 550877effa0eb7b0d6aeac7b5a2f2d4d03afe391 lib/Shipwright/Source/CPAN.pm
 SHA1 576824ebd3a383d4ead99d2e9968b1c919cd6e23 lib/Shipwright/Source/Compressed.pm
@@ -58,6 +56,7 @@ SHA1 4c7b86ecd218d72a45111a442980ba7254ea629f lib/Shipwright/Source/FTP.pm
 SHA1 1d4a3cf78f96c8f022dea35922869c333cbf73df lib/Shipwright/Source/HTTP.pm
 SHA1 c1ae86b61dc78eae898693bc15641d743d8dce76 lib/Shipwright/Source/SVK.pm
 SHA1 9140b2ab68fee53b65b015d180900c3b1749d506 lib/Shipwright/Source/SVN.pm
+SHA1 395043631e3a60bfb12afca5131d9331c6d88b2d lib/Shipwright/Tutorial.pod
 SHA1 a9ec80804b3213d49f5e3e8f3e7f347fb0c5cfeb lib/Shipwright/Util.pm
 SHA1 bbd2f0c905d780e2f63dc834f98a478e5725c642 t/00.load.t
 SHA1 7d6179a64d06925ba2101cd02f7bef3c85937fed t/hello/Acme-Hello-0.03.tar.gz
@@ -73,7 +72,7 @@ SHA1 0b6ee3329771b9d5fefeafcdaf6f7c5510c0c58f t/pod.t
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.8 (Darwin)
 
-iD8DBQFHtKqVEi9d9xCOQEYRAuvwAKCgtLJyQT/3hkna2TYphB4yhErJrACdHpZa
-QEnr+2SATLOkXWSiOdcjBNg=
-=BWDt
+iD8DBQFHteizEi9d9xCOQEYRApUhAKCjCzPXJeTXWRrlyVNvGXluagYZwwCgr/09
+ZIwdhkuJ/Uq4w1lSG14r9M8=
+=02tz
 -----END PGP SIGNATURE-----
