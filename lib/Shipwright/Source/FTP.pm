@@ -8,6 +8,8 @@ use Shipwright::Source::Compressed;
 
 use base qw/Shipwright::Source::Base/;
 
+$ENV{'FTP_PASSIVE'} = 1; # force enable passive mode, seems safe nowadays
+
 =head2 run
 
 =cut
@@ -39,7 +41,7 @@ sub _run {
 
         require LWP::UserAgent;
         my $ua = LWP::UserAgent->new;
-        $ua->timeout(10);
+        $ua->timeout(1200);
 
         my $response = $ua->get($source);
 

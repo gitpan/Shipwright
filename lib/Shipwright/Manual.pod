@@ -1,0 +1,31 @@
+=head1 NAME
+
+Shipwright::Manual - Shipwright documentation
+
+=head1 DESCRIPTION
+
+This manual is divided into several parts, each covering a specific topic.
+
+=over 4
+
+=item L<Shipwright::Manual::Tutorial>
+
+A simple tutorial that leads through the creation of a simple Shipwright
+vessel.
+
+=item L<Shipwright::Manual::CustomizeBuild>
+
+A guide to customizing the build process of individual distributions in a
+Shipwright repository.
+
+=item L<Shipwright::Manual::UsingFlags>
+
+A guide to using Shipwright's flags feature.
+
+=item L<Shipwright::Glossary>
+
+A Glossary of terms relevant to Shipwright and its documentation.
+
+=back
+
+=cut

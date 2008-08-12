@@ -3,6 +3,8 @@ abstract: Best Practical Builder
 author: 
   - sunnavy  C<< <sunnavy@bestpractical.com> >>
 build_requires: 
+  ExtUtils::MakeMaker: 6.11
+  IPC::Cmd: 0
   Module::Build: 0
 distribution_type: module
 generated_by: Module::Install version 0.68
@@ -26,16 +28,18 @@ requires:
   Class::Accessor::Fast: 0
   File::Copy: 0
   File::Copy::Recursive: 0
+  File::ShareDir: 0
   File::Slurp: 0
   File::Spec: 0
   File::Temp: 0
   Hash::Merge: 0
   IPC::Run3: 0
   LWP::UserAgent: 0
+  List::MoreUtils: 0
   Log::Log4perl: 0
   Module::CoreList: 0
   UNIVERSAL::require: 0
   YAML::Syck: 0.71
   version: 0
 tests: t/*.t t/*/*.t
-version: 1.01
+version: 1.10

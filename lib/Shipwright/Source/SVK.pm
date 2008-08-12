@@ -16,11 +16,6 @@ sub new {
     my $self  = $class->SUPER::new(@_);
 
     $self->name( $self->just_name( $self->source ) ) unless $self->name;
-    $self->_update_url( $self->name, $self->source );
-
-    my $s = $self->source;
-    $s =~ s!^\s*svk:!!;
-    $self->source($s);
     return $self;
 }
 
@@ -31,9 +26,12 @@ sub new {
 sub run {
     my $self = shift;
     $self->log->info( "prepare to run source: " . $self->source );
+
+    $self->_update_url( $self->name, 'svk:' . $self->source );
+
     $self->_run;
     my $s;
-    if ( $self->_is_compressed ) {
+    if ( $self->is_compressed ) {
         require Shipwright::Source::Compressed;
         $s = Shipwright::Source::Compressed->new( %$self, _no_update_url => 1 );
     }
@@ -51,27 +49,33 @@ sub run {
 sub _run {
     my $self   = shift;
     my $source = $self->source;
+
+
     my @cmds;
     push @cmds,
       [
         'svk', 'co', $self->source,
-        File::Spec->catfile( $self->download_directory, $self->name )
+        File::Spec->catfile( $self->download_directory, $self->name ),
+        $self->version ? ( '-r', $self->version ) : ()
       ];
     push @cmds,
       [
         'svk', 'co', '-d',
-        File::Spec->catfile( $self->download_directory, $self->name )
+        File::Spec->catfile( $self->download_directory, $self->name ),
       ];
+
+    unless ( $self->version ) {
+        my ($out) = Shipwright::Util->run( [ 'svk', 'info', $self->source, ] );
+
+        if ( $out =~ /^Revision: (\d+)/m ) {
+            $self->version($1);
+        }
+    }
+
 
     $self->source(
         File::Spec->catfile( $self->download_directory, $self->name ) );
     Shipwright::Util->run($_) for @cmds;
-}
-
-sub _is_compressed {
-    my $self = shift;
-    return 1 if $self->source =~ m{.*/(.+)\.(tar.(gz|bz2)|tgz)$};
-    return;
 }
 
 1;

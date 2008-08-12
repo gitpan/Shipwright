@@ -12,9 +12,18 @@ use Cwd qw/getcwd/;
 
 use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
-    qw/source directory download_directory follow min_perl_version map_path
-      skip map keep_recommends keep_build_requires name log url_path/
+    qw/source directory scripts_directory download_directory follow 
+    min_perl_version map_path skip map keep_recommends keep_build_requires 
+    name log url_path version_path version/
 );
+
+=head1 NAME
+
+Shipwright::Source::Base - base class for source
+
+=head1 SYNOPSIS
+
+=head1 METHODS
 
 =head2 new
 
@@ -50,6 +59,7 @@ sub _follow {
     my $cwd          = getcwd;
     my $require_path = File::Spec->catfile( $path, '__require.yml' );
     my $map          = {};
+    my $url          = {};
 
     unless ( $self->min_perl_version ) {
         no warnings 'once';
@@ -63,6 +73,10 @@ sub _follow {
         $map = Shipwright::Util::LoadFile( $self->map_path );
     }
 
+    if ( -e $self->url_path ) {
+        $url = Shipwright::Util::LoadFile( $self->url_path );
+    }
+
     if ( !-e $require_path ) {
 
         # if not found, we'll create one according to Build.PL or Makefile.PL
@@ -73,7 +87,7 @@ sub _follow {
             Shipwright::Util->run( [ $^X, 'Build.PL' ] );
             my $source = read_file( File::Spec->catfile( '_build', 'prereqs' ) )
               or die "can't read _build/prereqs: $!";
-            my $eval .= '$require = ' . $source;
+            my $eval = '$require = ' . $source;
             eval $eval or die "eval error: $@";    ## no critic
 
             $source = read_file( File::Spec->catfile('Build.PL') )
@@ -81,56 +95,131 @@ sub _follow {
             if (   $source =~ /Module::Build/
                 && $self->name ne 'cpan-Module-Build' )
             {
-                unless ( $require->{build_requires}{'Module::Build'} ) {
-                    $require->{build_requires} = { 'Module::Build' => 0 };
+                unless ( defined $require->{build_requires}{'Module::Build'} ) {
+                    $require->{build_requires}{'Module::Build'} = 0;
                 }
             }
 
             Shipwright::Util->run( [ './Build', 'realclean' ] );
         }
         elsif ( -e 'Makefile.PL' ) {
-            Shipwright::Util->run( [ $^X, 'Makefile.PL' ] );
-            my ($source) = grep { /PREREQ_PM/ } read_file('Makefile');
-            if ( $source && $source =~ /({.*})/ ) {
-                my $eval .= '$require = ' . $1;
-                $eval =~ s/([\w:]+)=>/'$1'=>/g;
-                eval $eval or die "eval error: $@";    ## no critic
-            }
-
-            for ( keys %$require ) {
-                $require->{requires}{$_} = delete $require->{$_};
-            }
-
-            $source = read_file('Makefile.PL')
+            my $makefile = read_file('Makefile.PL')
               or die "can't read Makefile.PL: $!";
 
-            if (   $source =~ /ExtUtils::/
-                && $self->name ne 'cpan-ExtUtils-MakeMaker' )
-            {
-                unless ( defined $require->{requires}{'ExtUtils::MakeMaker'}
-                    && $require->{requires}{'ExtUtils::MakeMaker'} >= 6.31 )
-                {
-                    $require->{build_requires} =
-                      { 'ExtUtils::MakeMaker' => 6.31 };
-                }
+            if ( $makefile =~ /inc::Module::Install/ ) {
+# PREREQ_PM in Makefile is not good enough for inc::Module::Install, which
+# will omit features(..). we'll put deps in features(...) into recommends part
+
+                $makefile =~ s/^\s*requires(?!\w)/shipwright_requires/mg;
+                $makefile =~
+                  s/^\s*build_requires(?!\w)/shipwright_build_requires/mg;
+                $makefile =~ s/^\s*features(?!\w)/shipwright_features/mg;
+                my $shipwright_makefile = <<'EOF';
+my $shipwright_req = {};
+
+sub shipwright_requires {
+    $shipwright_req->{requires}{$_[0]} = $_[1] || 0;
+    goto &requires;
+}
+
+sub shipwright_build_requires {
+    $shipwright_req->{build_requires}{$_[0]} = $_[1] || 0;
+    goto &build_requires;
+}
+
+sub shipwright_features {
+    my @args = @_;
+    while ( my ( $name, $mods ) = splice( @_, 0, 2 ) ) {
+        for ( my $i = 0; $i < @$mods; $i++ ) {
+            if ( $mods->[$i] eq '-default' ) {
+                $i++;
+                next;
             }
 
-#      # Makefile doesn't have recommends or build_requires stuff, we need to fix
-#      # that accroding to META.yml
-#            my $meta_path = File::Spec->catfile( $path, 'META.yml' );
-#            if ( -e $meta_path ) {
-#                my $meta = Shipwright::Util::LoadFile($meta_path);
-#
-#                for (qw/recommends build_requires/) {
-#                    my $keep = 'keep_' . $_;
-#                    if ( $self->$keep && $meta->{$_} && ! $require->{$_} ) {
-#                        $require->{$_} = $meta->{$_};
-#                    }
-#                }
-#            }
+            if ( ref $mods->[$i] eq 'ARRAY' ) {
+# this happends when
+# features(
+#     'Date loading' => [
+#         -default => 0,
+#        recommends( 'DateTime' )
+#     ],
+# );
+               for ( my $j = 0; $j < @{$mods->[$i]}; $j++ ) {
+                    if ( $mods->[$i][$j+1] =~ /^[\d\.]+$/ ) {
+                        $shipwright_req->{recommends}{$mods->[$i][$j]} 
+                            = $mods->[$i][$j+1];
+                        $j++;
+                    }
+                    else {
+                        $shipwright_req->{recommends}{$mods->[$i][$j]} = 0;
+                    }
+                }
+                
+                next;
+            }
 
+            if ( $mods->[$i+1] =~ /^[\d\.]+$/ ) {
+                # index $i+1 is a version
+                $shipwright_req->{recommends}{$mods->[$i]} = $mods->[$i+1];
+                $i++;
+            }
+            else {
+                $shipwright_req->{recommends}{$mods->[$i]} = 0;
+            }
+        }
+    }
+    
+    goto &features;
+}
+
+END {
+require Data::Dumper;
+open my $tmp_fh, '>', 'shipwright_prereqs';
+print $tmp_fh Data::Dumper->Dump( [$shipwright_req], [qw/require/] );
+}
+
+EOF
+
+                $shipwright_makefile .= $makefile;
+                write_file( 'shipwright_makefile.pl', $shipwright_makefile );
+
+                Shipwright::Util->run( [ $^X, 'shipwright_makefile.pl' ] );
+                my $prereqs =
+                  read_file( File::Spec->catfile('shipwright_prereqs') )
+                  or die "can't read prereqs: $!";
+                eval $prereqs or die "eval error: $@";    ## no critic
+
+                Shipwright::Util->run( [ 'rm',   'shipwright_makefile.pl' ] );
+                Shipwright::Util->run( [ 'rm',   'shipwright_prereqs' ] );
+            }
+            else {
+
+                # we extract the deps from Makefile
+                Shipwright::Util->run( [ $^X, 'Makefile.PL' ] );
+                my ($source) = grep { /PREREQ_PM/ } read_file('Makefile');
+                if ( $source && $source =~ /({.*})/ ) {
+                    my $eval .= '$require = ' . $1;
+                    $eval =~ s/([\w:]+)=>/'$1'=>/g;
+                    eval $eval or die "eval error: $@";    ## no critic
+                }
+
+                for ( keys %$require ) {
+                    $require->{requires}{$_} = delete $require->{$_};
+                }
+                
+                if (   $makefile =~ /ExtUtils::/
+                    && $self->name ne 'cpan-ExtUtils-MakeMaker' )
+                {
+                    unless ( $require->{requires}{'ExtUtils::MakeMaker'}
+                        && $require->{requires}{'ExtUtils::MakeMaker'} >= 6.31 )
+                    {
+                        $require->{build_requires}{'ExtUtils::MakeMaker'} =
+                          6.31;
+                    }
+                }
+            }
             Shipwright::Util->run( [ 'make', 'clean' ] );
-            Shipwright::Util->run( [ 'rm', 'Makefile.old' ] );
+            Shipwright::Util->run( [ 'rm',   'Makefile.old' ] );
         }
 
         for my $type (qw/requires recommends build_requires/) {
@@ -177,9 +266,15 @@ sub _follow {
                 }
 
                 my $name = $module;
+
                 if ( $self->_is_skipped($module) ) {
-                    delete $require->{$type}{$module}
-                      unless defined $map->{$module};
+                    unless ( defined $map->{$module} || defined $url->{$module} ) {
+
+                # not in the map, meaning it's not been imported before,
+                # so it's safe to erase it
+                        delete $require->{$type}{$module};
+                        next;
+                    }
                 }
                 else {
 
@@ -212,14 +307,16 @@ sub _follow {
                         {
                             $s = Shipwright::Source->new(
                                 %$self,
-                                source => $require->{$type}{$module}{source},
-                                name   => $name,
+                                source  => $require->{$type}{$module}{source},
+                                name    => $name,
+                                version => undef,
                             );
                         }
                         else {
                             $s = Shipwright::Source->new(
                                 %$self,
-                                source => $module,
+                                source  => "cpan:$module",
+                                version => undef,
                                 name => '',   # cpan name is automaticaly fixed.
                             );
                         }
@@ -231,8 +328,10 @@ sub _follow {
                     if ( -e $self->map_path ) {
                         $map = Shipwright::Util::LoadFile( $self->map_path );
                     }
+
                 }
 
+                # convert required module name to dist name like cpan-Jifty-DBI
                 if ( $map->{$module} && $map->{$module} =~ /^cpan-/ ) {
                     $require->{$type}{ $map->{$module} } =
                       delete $require->{$type}{$module};
@@ -275,11 +374,24 @@ sub _update_url {
     my $url  = shift;
 
     my $map = {};
-    if ( -e $self->url_path ) {
+    if ( -e $self->url_path && !-z $self->url_path ) {
         $map = Shipwright::Util::LoadFile( $self->url_path );
     }
     $map->{$name} = $url;
     Shipwright::Util::DumpFile( $self->url_path, $map );
+}
+
+sub _update_version {
+    my $self    = shift;
+    my $name    = shift;
+    my $version = shift;
+
+    my $map = {};
+    if ( -e $self->version_path && !-z $self->version_path ) {
+        $map = Shipwright::Util::LoadFile( $self->version_path );
+    }
+    $map->{$name} = $version;
+    Shipwright::Util::DumpFile( $self->version_path, $map );
 }
 
 sub _is_skipped {
@@ -322,51 +434,50 @@ trim the version stuff from dist name
 sub just_name {
     my $self = shift;
     my $name = shift;
-    $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz|tar\.bz2)$/;
+
+    $name =~ s/tar\.bz2$/tar.gz/;  # CPAN::DistnameInfo doesn't like bz2
+
+    $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz)$/;
+
     require CPAN::DistnameInfo;
-    return CPAN::DistnameInfo->new($name)->dist;
+    my $info = CPAN::DistnameInfo->new($name);
+    my $dist = $info->dist;
+    return $dist;
 }
+
+=head2 just_version
+
+return version
+
+=cut
+
+sub just_version {
+    my $self = shift;
+    my $name = shift;
+    $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz|tar\.bz2)$/;
+
+    require CPAN::DistnameInfo;
+    my $info    = CPAN::DistnameInfo->new($name);
+    my $version = $info->version;
+    $version =~ s/^v// if $version;
+    return $version;
+}
+
+=head2 is_compressed
+
+return true if the source is compressed file, i.e. tar.gz(tgz) and tar.bz2
+
+=cut
+
+sub is_compressed {
+    my $self = shift;
+    return 1 if $self->source =~ m{.*/.+\.(tar.(gz|bz2)|tgz)$};
+    return;
+}
+
 
 1;
 
 __END__
 
-=head1 NAME
-
-Shipwright::Source::Base - base class for source
-
-
-=head1 SYNOPSIS
-
-  
-=head1 DESCRIPTION
-
-
-=head1 INTERFACE 
-
-
-=head1 DEPENDENCIES
-
-None.
-
-
-=head1 INCOMPATIBILITIES
-
-None reported.
-
-
-=head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
-
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+=head1 INTERFACE

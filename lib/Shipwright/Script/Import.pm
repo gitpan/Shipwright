@@ -6,8 +6,8 @@ use Carp;
 
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
-    qw/repository log_level comment source follow build_script require_yml
-      name test_script extra_tests overwrite min_perl_version skip log_file/
+    qw/comment no_follow build_script require_yml
+      name test_script extra_tests overwrite min_perl_version skip version/
 );
 
 use Shipwright;
@@ -17,72 +17,88 @@ use File::Copy qw/copy move/;
 use File::Temp qw/tempdir/;
 use Config;
 use Hash::Merge;
+use List::MoreUtils qw/uniq first_index/;
 
 Hash::Merge::set_behavior('RIGHT_PRECEDENT');
 
-=head2 options
-=cut
-
 sub options {
     (
-        'r|repository=s'   => 'repository',
-        'l|log-level=s'    => 'log_level',
-        'log-file=s'       => 'log_file',
         'm|comment=s'      => 'comment',
-        's|source=s'       => 'source',
         'name=s'           => 'name',
-        'follow=s'         => 'follow',
+        'no-follow'        => 'no_follow',
         'build-script=s'   => 'build_script',
         'require-yml=s'    => 'require_yml',
-        'test-script=s'    => 'test_script',
-        'extra-tests=s'    => 'extra_tests',
+        'test-script'      => 'test_script',
+        'extra-tests'      => 'extra_tests',
         'overwrite'        => 'overwrite',
         'min-perl-version' => 'min_perl_version',
         'skip=s'           => 'skip',
+        'version=s'        => 'version',
     );
 }
 
-my %imported;
-
-=head2 run
-=cut
+my ( %imported, $version );
 
 sub run {
     my $self   = shift;
     my $source = shift;
 
-    $self->source($source) if $source;
-    $self->follow(1) unless defined $self->follow;
-    $self->skip( { map { $_ => 1 } split /\s*,\s*/, $self->skip || '' } );
+    my $shipwright = Shipwright->new( repository => $self->repository, );
 
-    for (qw/repository source/) {
-        die "need $_ arg" unless $self->$_();
+    if ( $self->name && !$source ) {
+
+        # don't have source specified, use the one in repo
+        my $map        = $shipwright->backend->map    || {};
+        my $source_yml = $shipwright->backend->source || {};
+
+        my $r_map = { reverse %$map };
+        if ( $r_map->{ $self->name } ) {
+            $source = 'cpan:' . $r_map->{ $self->name };
+        }
+        elsif ( $source_yml->{ $self->name } ) {
+            $source = $source_yml->{ $self->name };
+        }
+
     }
 
-    if ( $self->name ) {
-        if ( $self->name =~ /::/ ) {
-            $self->log->warn("we saw '::' in the name, will treat it as '-'");
-            my $name = $self->name;
-            $name =~ s/::/-/g;
-            $self->name($name);
-        }
-        if ( $self->name !~ /^[-\w]+$/ ) {
-            die 'name can only have alphanumeric characters and -';
-        }
+    die "we need source arg\n" unless $source;
+
+    if ( $self->extra_tests ) {
+        $shipwright->backend->import(
+            source       => $source,
+            comment      => 'import extra tests',
+            _extra_tests => 1,
+        );
     }
+    elsif ( $self->test_script ) {
+        $shipwright->backend->test_script( source => $source );
+    }
+    else {
+        $self->skip( { map { $_ => 1 } split /\s*,\s*/, $self->skip || '' } );
 
-    my $shipwright = Shipwright->new(
-        repository       => $self->repository,
-        log_level        => $self->log_level,
-        log_file         => $self->log_file,
-        source           => $self->source,
-        name             => $self->name,
-        follow           => $self->follow,
-        min_perl_version => $self->min_perl_version,
-        skip             => $self->skip,
-    );
+        if ( $self->name ) {
+            if ( $self->name =~ /::/ ) {
+                $self->log->warn(
+                    "we saw '::' in the name, will treat it as '-'");
+                my $name = $self->name;
+                $name =~ s/::/-/g;
+                $self->name($name);
+            }
+            if ( $self->name !~ /^[-.\w]+$/ ) {
+                die
+                  qq{name can only have alphanumeric characters, "." and "-"\n};
+            }
+        }
 
-    if ( $self->source ) {
+        my $shipwright = Shipwright->new(
+            repository       => $self->repository,
+            source           => $source,
+            name             => $self->name,
+            follow           => !$self->no_follow,
+            min_perl_version => $self->min_perl_version,
+            skip             => $self->skip,
+            version          => $self->version,
+        );
 
         unless ( $self->overwrite ) {
 
@@ -99,42 +115,60 @@ sub run {
             $shipwright->backend->map || {},
         );
 
-        $self->source(
-            $shipwright->source->run(
-                copy => { '__require.yml' => $self->require_yml },
-            )
+        Shipwright::Util::DumpFile(
+            $shipwright->source->url_path,
+            $shipwright->backend->source || {},
         );
 
-        my ($name) = $self->source =~ m{.*/(.*)$};
+        $source = $shipwright->source->run(
+            copy => { '__require.yml' => $self->require_yml }, );
+
+        $version =
+          Shipwright::Util::LoadFile( $shipwright->source->version_path );
+
+        my ($name) = $source =~ m{.*/(.*)$};
         $imported{$name}++;
 
-        my $script_dir = tempdir( CLEANUP => 1 );
+        my $base = $self->_parent_dir($source);
 
-        if ( my $script = $self->build_script ) {
-            copy( $self->build_script,
-                File::Spec->catfile( $script_dir, 'build' ) );
+        my $script_dir;
+        if ( -e File::Spec->catdir( $base, '__scripts', $name ) ) {
+            $script_dir = File::Spec->catdir( $base, '__scripts', $name );
         }
         else {
-            $self->generate_build( $self->source, $script_dir, $shipwright );
+     # Source part doesn't have script stuff, so we need to create by ourselves.
+            $script_dir = tempdir( CLEANUP => 1 );
+
+            if ( my $script = $self->build_script ) {
+                copy( $self->build_script,
+                    File::Spec->catfile( $script_dir, 'build' ) );
+            }
+            else {
+                $self->_generate_build( $source, $script_dir, $shipwright );
+            }
+
         }
 
-        if ( $self->follow ) {
-            $self->import_req( $self->source, $shipwright );
+        unless ( $self->no_follow ) {
+            $self->_import_req( $source, $shipwright, $script_dir );
 
-            move(
-                File::Spec->catfile( $self->source, '__require.yml' ),
-                File::Spec->catfile( $script_dir,   'require.yml' )
-            ) or die "move __require.yml failed: $!";
+            if ( -e File::Spec->catfile( $source, '__require.yml' ) ) {
+                move(
+                    File::Spec->catfile( $source,     '__require.yml' ),
+                    File::Spec->catfile( $script_dir, 'require.yml' )
+                ) or die "move __require.yml failed: $!\n";
+            }
         }
 
         $shipwright->backend->import(
-            source  => $self->source,
-            comment => $self->comment || 'import ' . $self->source,
-            overwrite => 1,    # import anyway for the main dist
+            source  => $source,
+            comment => $self->comment || 'import ' . $source,
+            overwrite => 1,                   # import anyway for the main dist
+            version   => $version->{$name},
         );
         $shipwright->backend->import(
-            source       => $self->source,
-            comment      => 'import scripts for' . $self->source,
+            source       => $source,
+            comment      => 'import scripts for' . $source,
             build_script => $script_dir,
             overwrite    => 1,
         );
@@ -152,36 +186,27 @@ sub run {
         $shipwright->backend->source(
             Hash::Merge::merge( $shipwright->backend->source || {}, $new_url )
         );
+
+        $self->_reorder($shipwright);
     }
 
-    # import tests
-    if ( $self->extra_tests ) {
-        $shipwright->backend->import(
-            source       => $self->extra_tests,
-            comment      => 'import extra tests',
-            _extra_tests => 1,
-        );
-    }
-
-    if ( $self->test_script ) {
-        $shipwright->backend->test_script( source => $self->test_script );
-    }
+    print "imported with success\n";
 
 }
 
-=head2 import_req
+# _import_req: import required dists for a dist
 
-import required dists for a dist
-
-=cut
-
-sub import_req {
+sub _import_req {
     my $self         = shift;
     my $source       = shift;
     my $shipwright   = shift;
-    my $require_file = File::Spec->catfile( $source, '__require.yml' );
+    my $script_dir   = shift;
 
-    my $dir = parent_dir($source);
+    my $require_file = File::Spec->catfile( $source, '__require.yml' );
+    $require_file = File::Spec->catfile( $script_dir, 'require.yml' )
+      unless -e File::Spec->catfile( $source, '__require.yml' );
+
+    my $dir = $self->_parent_dir($source);
 
     my $map_file = File::Spec->catfile( $dir, 'map.yml' );
 
@@ -209,26 +234,38 @@ sub import_req {
                     unless ($s) {
                         $self->log->warn(
                             "we don't have $dist in source which is for "
-                              . $self->source );
+                              . $source );
                         next;
                     }
 
-                    $s = File::Spec->catfile( $dir, $s );
+                    $s = File::Spec->catdir( $dir, $s );
 
-                    $self->import_req( $s, $shipwright );
+                    my $script_dir;
+                    if ( -e File::Spec->catdir( $dir, '__scripts', $dist ) ) {
+                        $script_dir =
+                          File::Spec->catdir( $dir, '__scripts', $dist );
+                    }
+                    else {
+                        $script_dir = tempdir( CLEANUP => 1 );
+                        if ( -e File::Spec->catfile( $s, '__require.yml' ) ) {
+                            move(
+                                File::Spec->catfile( $s, '__require.yml' ),
+                                File::Spec->catfile(
+                                    $script_dir, 'require.yml'
+                                )
+                            ) or die "move $s/__require.yml failed: $!\n";
+                        }
 
-                    my $script_dir = tempdir( CLEANUP => 1 );
-                    move(
-                        File::Spec->catfile( $s,          '__require.yml' ),
-                        File::Spec->catfile( $script_dir, 'require.yml' )
-                    ) or die "move $s/__require.yml failed: $!";
+                        $self->_generate_build( $s, $script_dir, $shipwright );
+                    }
 
-                    $self->generate_build( $s, $script_dir, $shipwright );
+                    $self->_import_req( $s, $shipwright, $script_dir );
 
                     $shipwright->backend->import(
                         comment   => 'deps for ' . $source,
                         source    => $s,
                         overwrite => $self->overwrite,
+                        version   => $version->{$dist},
                     );
                     $shipwright->backend->import(
                         source       => $s,
@@ -243,13 +280,10 @@ sub import_req {
 
 }
 
-=head2 generate_build
+# _generate_build:
+# automatically generate build script if not provided
 
-automatically generate build script if not provided
-
-=cut
-
-sub generate_build {
+sub _generate_build {
     my $self       = shift;
     my $source_dir = shift;
     my $script_dir = shift;
@@ -258,15 +292,9 @@ sub generate_build {
     chdir $source_dir;
 
     my @commands;
-    if ( -f 'configure' ) {
-        @commands = (
-            'configure: ./configure --prefix=%%INSTALL_BASE%%',
-            'make: make',
-            'install: make install',
-            'clean: make clean'
-        );
-    }
-    elsif ( -f 'Build.PL' ) {
+    if ( -f 'Build.PL' ) {
+        print
+"detected Module::Build build system; generating appropriate build script\n";
         push @commands,
           'configure: %%PERL%% Build.PL --install_base=%%INSTALL_BASE%%';
         push @commands, "make: ./Build";
@@ -278,6 +306,8 @@ sub generate_build {
         push @commands, "clean: %%PERL%% Build realclean";
     }
     elsif ( -f 'Makefile.PL' ) {
+        print
+"detected ExtUtils::MakeMaker build system; generating appropriate build script\n";
         push @commands,
           'configure: %%PERL%% Makefile.PL INSTALL_BASE=%%INSTALL_BASE%%';
         push @commands, 'make: make';
@@ -285,8 +315,33 @@ sub generate_build {
         push @commands, "install: make install";
         push @commands, "clean: make clean";
     }
+    elsif ( -f 'configure' ) {
+        print
+"detected autoconf build system; generating appropriate build script\n";
+        @commands = (
+            'configure: ./configure --prefix=%%INSTALL_BASE%%',
+            'make: make',
+            'install: make install',
+            'clean: make clean'
+        );
+    }
     else {
+        my ($name) = $source_dir =~ /([-\w.]+)$/;
+        print "unknown build system for this dist; you MUST manually edit\n";
+        print "/scripts/$name/build or provide a build.pl file or this dist\n";
+        print "will not be built!\n";
         $self->log->warn("I have no idea how to build this distribution");
+
+        # stub build file to provide the user something to go from
+        push @commands,
+          '# Edit this file to specify commands for building this dist.';
+        push @commands,
+          '# See the perldoc for Shipwright::Manual::CustomizeBuild for more';
+        push @commands, '# info.';
+        push @commands, 'make: ';
+        push @commands, 'test: ';
+        push @commands, 'install: ';
+        push @commands, 'clean: ';
     }
 
     open my $fh, '>', File::Spec->catfile( $script_dir, 'build' ) or die $@;
@@ -294,17 +349,58 @@ sub generate_build {
     close $fh;
 }
 
-=head2 parent_dir
+# _parent_dir: return parent dir
 
-return parent dir 
-
-=cut
-
-sub parent_dir {
+sub _parent_dir {
+    my $self   = shift;
     my $source = shift;
     my @dirs   = File::Spec->splitdir($source);
     pop @dirs;
     return File::Spec->catfile(@dirs);
+}
+
+# _reorder:
+# make some hack for order.
+# move ExtUtils::MakeMaker and Module::Build to the head of cpan dists
+
+sub _reorder {
+    my $self       = shift;
+    my $shipwright = shift;
+    my $order      = $shipwright->backend->order;
+
+    my $first_cpan_index = first_index { /^cpan-/ } @$order;
+
+    unless (
+        (
+            $order->[$first_cpan_index] eq 'cpan-ExtUtils-MakeMaker'
+            && ( ( ( first_index { $_ eq 'cpan-Module-Build' } @$order ) == -1 )
+                || $order->[ $first_cpan_index + 1 ] eq 'cpan-Module-Build' )
+        )
+        || (
+            $order->[$first_cpan_index] eq 'cpan-Module-Build'
+            && (
+                (
+                    ( first_index { $_ eq 'cpan-ExtUtils-MakeMaker' } @$order )
+                    == -1
+                )
+                || $order->[ $first_cpan_index + 1 ] eq
+                'cpan-ExtUtils-MakeMaker'
+            )
+        )
+      )
+    {
+        for my $build (qw/cpan-ExtUtils-MakeMaker cpan-Module-Build/) {
+            my $index = first_index { $build eq $_ } @$order;
+            next if $index == -1;    # $index == -1 if not found
+            if ( $index > $first_cpan_index ) {    # not the 1st cpan dist
+                splice @$order, $first_cpan_index, 0, $build;
+            }
+        }
+    }
+
+    @$order = uniq @$order;
+    $shipwright->backend->order($order);
+
 }
 
 1;
@@ -313,36 +409,89 @@ __END__
 
 =head1 NAME
 
-Shipwright::Script::Import - import a source(maybe with a lot of dependences)
+Shipwright::Script::Import - import a source and its dependencies
 
 =head1 SYNOPSIS
 
-  shipwright import          import a source
+ import SOURCE
 
- Options:
-   --repository(-r)   specify the repository of our project
-   --log-level(-l)    specify the log level
-   --comment(-m)      specify the comment
-   --source(-s)       specify the source path
-   --name             specify the source name( only alphanumeric characters and - )
-   --build-script     specify the build script
-   --require-yml      specify the require.yml
-   --follow           follow the dependent chain or not
-   --extra-test       specify the extra test source(for --only-test when build)
-   --test-script      specify the test script(for --only-test when build)
-   --min-perl-version minimal perl version( default is the same as the one
-                      which runs this cmd )
-   --overwrite        import anyway even if we have deps dists in repo already
+=head1 OPTIONS
 
-=head1 AUTHOR
+ -r [--repository] REPOSITORY   : specify the repository of our project
+ -l [--log-level] LOGLEVEL      : specify the log level
+ --log-file FILENAME            : specify the log file
+ -m [--comment] COMMENT         : specify the comment
+ --name NAME                    : specify the source name (only alphanumeric
+                                  characters, . and -)
+ --build-script FILENAME        : specify the build script
+ --require-yml FILENAME         : specify the require.yml
+ --no-follow                    : don't follow the dependency chain
+ --extra-test FILENAME          : specify the extra test source
+                                  (for --only-test when building)
+ --test-script FILENAME         : specify the test script (for --only-test when
+                                  building)
+ --min-perl-version             : minimal perl version (default is the same as
+                                  the one which runs this command)
+ --overwrite                    : import dependency dists anyway even if they
+                                  are already in the repository
+ --version                      : specify the source's version
 
-sunnavy  C<< <sunnavy@bestpractical.com> >>
+=head1 DESCRIPTION
 
+The import command imports a new dist into a shipwright repository from any of
+a number of supported source types (enumerated below). If a dist of the name
+specified by C<--name> already exists in the repository, the old files for that
+dist in F</dists> and F</scripts> are deleted and new ones added. This is the
+recommended method for updating non-svn, svk, or CPAN dists to new versions
+(see L<Shipwright::Update> for more information on the C<update> command, which
+is used for updating svn, svk, and CPAN dists).
 
-=head1 LICENCE AND COPYRIGHT
+=head1 SUPPORTED SOURCE TYPES
 
-Copyright 2007 Best Practical Solutions.
+Generally, the format is L<type:schema>; be careful, there is no blank between
+type and schema, just a colon.
 
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+=over 4
 
+=item CPAN
+
+e.g. cpan:Jifty::DBI  cpan:File::Spec
+
+=item File
+
+e.g. L<file:/home/sunnavy/foo-1.23.tar.gz>
+L<file:/home/sunnavy/foo-1.23.tar.bz2>
+L<file:/home/sunnavy/foo-1.23.tgz>
+
+=item Directory
+
+e.g. L<directory:/home/sunnavy/foo-1.23>
+L<dir:/home/sunnavy/foo-1.23>
+
+=item HTTP
+
+e.g. L<http:http://example/foo-1.23.tar.gz>
+
+You can also omit one `http', like this:
+
+L<http://example.com/foo-1.23.tar.gz>
+
+F<.tgz> and F<.tar.bz2> are also supported.
+
+=item FTP
+
+e.g. L<ftp:ftp://example.com/foo-1.23.tar.gz>
+L<ftp://example.com/foo-1.23.tar.gz>
+
+F<.tgz> and F<.tar.bz2> are also supported.
+
+=item SVK
+
+e.g. L<svk://public/foo-1.23> L<svk:/local/foo-1.23>
+
+=item SVN
+
+e.g. L<svn:file:///home/public/foo-1.23>
+L<svn:http://svn.example.com/foo-1.23>
+
+=back

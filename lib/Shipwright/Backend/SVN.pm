@@ -6,186 +6,51 @@ use Carp;
 use File::Spec;
 use Shipwright::Util;
 use File::Temp qw/tempdir/;
-use File::Copy;
-
-# our project's own files will be in //local/test/main
-# all the dependance packages will be in //local/test/deps
-# the shipwright's stuff will be in //local/test/shipwright
+use File::Copy qw/copy/;
 
 our %REQUIRE_OPTIONS = ( import => [qw/source/], );
 
-use base qw/Class::Accessor::Fast/;
-__PACKAGE__->mk_accessors(qw/repository log/);
+use base qw/Shipwright::Backend::Base/;
 
-=head2 new
+=head1 NAME
 
-=cut
+Shipwright::Backend::SVN - SVN repository backend
 
-sub new {
-    my $class = shift;
-    my $self  = {@_};
+=head1 DESCRIPTION
 
-    bless $self, $class;
-    $self->log( Log::Log4perl->get_logger( ref $self ) );
-    return $self;
-}
+This module implements a SVN repository backend for Shipwright.
 
-=head2 initialize
+=head1 METHODS
 
-initialize a project
+=over
+
+=item initialize
+
+Initialize a project.
 
 =cut
 
 sub initialize {
     my $self = shift;
-    my $dir = tempdir( CLEANUP => 1 );
-    for (qw/shipwright dists etc bin scripts t/) {
-        mkdir File::Spec->catfile( $dir, $_ );
-    }
-
-    my %map = (
-        File::Spec->catfile( $dir, 'etc', 'shipwright-script-wrapper' ) =>
-          'wrapper',
-        File::Spec->catfile( $dir, 'etc', 'shipwright-perl-wrapper' ) =>
-          'perl_wrapper',
-        File::Spec->catfile( $dir, 'etc', 'shipwright-utility' ) =>
-          'installed_utility',
-        File::Spec->catfile( $dir, 'etc', 'shipwright-source-bash' ) =>
-          'source_bash',
-        File::Spec->catfile( $dir, 'etc', 'shipwright-source-tcsh' ) =>
-          'source_tcsh',
-        File::Spec->catfile( $dir, 'bin', 'shipwright-builder' ) => 'builder',
-        File::Spec->catfile( $dir, 'bin', 'shipwright-utility' ) => 'utility',
-        File::Spec->catfile( $dir, 't',   'test' )               => 'null',
-        File::Spec->catfile( $dir, 'shipwright', 'order.yml' ) => 'null',
-    );
-
-    for ( keys %map ) {
-        open my $fh, '>', $_ or die "can't open file $_: $!";
-        print $fh Shipwright::Backend->make_script( $map{$_} );
-        close $fh;
-    }
+    my $dir  = $self->SUPER::initialize(@_);
 
     $self->delete;    # clean repository in case it exists
-    $self->log->info( 'initialize ' . $self->repository );
     $self->import(
         source      => $dir,
         comment     => 'create project',
         _initialize => 1,
     );
 
-    for (
-        'bin/shipwright-builder',      'bin/shipwright-utility',
-        'etc/shipwright-perl-wrapper', 'etc/shipwright-script-wrapper',
-        't/test',                      'etc/shipwright-utility',
-      )
-    {
-        $self->propset(
-            path  => $_,
-            type  => 'svn:executable',
-            value => '*'
-        );
-    }
 }
 
-=head2 import
-
-import a dist
+=item import
 
 =cut
 
 sub import {
     my $self = shift;
     return unless @_;
-    my %args = @_;
-    my $name = $args{source};
-    $name =~ s{.*/}{};
-
-    unless ( $args{_initialize} ) {
-        if ( $args{_extra_tests} ) {
-            $self->delete("t/extra");
-            $self->log->info( "import extra tests to " . $self->repository );
-            Shipwright::Util->run(
-                $self->_cmd( import => %args, name => $name ) );
-        }
-        elsif ( $args{build_script} ) {
-            if ( $self->info("scripts/$name") && not $args{overwrite} ) {
-                $self->log->warn(
-"path scripts/$name alreay exists, need to set overwrite arg to overwrite"
-                );
-            }
-            else {
-                $self->delete("scripts/$name");
-                $self->log->info(
-                    "import $args{source}'s scripts to " . $self->repository );
-                Shipwright::Util->run(
-                    $self->_cmd( import => %args, name => $name ) );
-            }
-        }
-        else {
-            if ( $self->info("dists/$name") && not $args{overwrite} ) {
-                $self->log->warn(
-"path dists/$name alreay exists, need to set overwrite arg to overwrite"
-                );
-            }
-            else {
-                $self->delete("dists/$name");
-                $self->log->info(
-                    "import $args{source} to " . $self->repository );
-                $self->_add_to_order( $name );
-                Shipwright::Util->run(
-                    $self->_cmd( import => %args, name => $name ) );
-            }
-        }
-    }
-    else {
-        Shipwright::Util->run( $self->_cmd( import => %args, name => $name ) );
-    }
-}
-
-=head2 export
-
-a wrapper of export cmd of svn
-export a project, partly or as a whole
-
-=cut
-
-sub export {
-    my $self = shift;
-    my %args = @_;
-    my $path = $args{path} || '';
-    $self->log->info(
-        'export ' . $self->repository . "/$path to $args{target}" );
-    Shipwright::Util->run( $self->_cmd( export => %args ) );
-}
-
-=head2 checkout
-
-a wrapper of checkout cmd of svn
-checkout a project, partly or as a whole
-
-=cut
-
-sub checkout {
-    my $self = shift;
-    my %args = @_;
-    my $path = $args{path} || '';
-    $self->log->info(
-        'export ' . $self->repository . "/$path to $args{target}" );
-    Shipwright::Util->run( $self->_cmd( checkout => @_ ) );
-}
-
-=head2 commit
-
-a wrapper of commit cmd of svn
-
-=cut
-
-sub commit {
-    my $self = shift;
-    my %args = @_;
-    $self->log->info( 'commit ' . $args{path} );
-    Shipwright::Util->run( $self->_cmd( commit => @_ ), 1 );
+    return $self->SUPER::import( @_, delete => 1 );
 }
 
 # a cmd generating factory
@@ -221,7 +86,7 @@ sub _cmd {
         elsif ( $args{_extra_tests} ) {
             $cmd = [
                 'svn', 'import',
-                $args{source}, join( '/', $self->repository, 't', 'extra' ),
+                $args{source}, $self->repository . 't/extra',
                 '-m', q{'} . $args{comment} . q{'},
             ];
         }
@@ -242,6 +107,9 @@ sub _cmd {
             }
         }
     }
+    elsif ( $type eq 'list' ) {
+        $cmd = [ 'svn', 'list', $self->repository . $args{path} ];
+    }
     elsif ( $type eq 'commit' ) {
         $cmd =
           [ 'svn', 'commit', '-m', q{'} . $args{comment} . q{'}, $args{path} ];
@@ -249,18 +117,24 @@ sub _cmd {
     elsif ( $type eq 'delete' ) {
         $cmd = [
             'svn', 'delete', '-m', q{'} . 'delete' . $args{path} . q{'},
-            join '/', $self->repository, $args{path}
+            $self->repository . $args{path}
+        ];
+    }
+    elsif ( $type eq 'move' ) {
+        $cmd = [
+            'svn',
+            'move',
+            '-m',
+            q{'} . "move $args{path} to $args{new_path}" . q{'},
+            $self->repository . $args{path},
+            $self->repository . $args{new_path}
         ];
     }
     elsif ( $type eq 'info' ) {
-        $cmd = [ 'svn', 'info', join '/', $self->repository, $args{path} ];
+        $cmd = [ 'svn', 'info', $self->repository . $args{path} ];
     }
-    elsif ( $type eq 'propset' ) {
-        $cmd = [
-            'svn',       'propset',
-            $args{type}, q{'} . $args{value} . q{'},
-            $args{path}
-        ];
+    elsif ( $type eq 'cat' ) {
+        $cmd = [ 'svn', 'cat', $self->repository . $args{path} ];
     }
     else {
         croak "invalid command: $type";
@@ -269,308 +143,108 @@ sub _cmd {
     return $cmd;
 }
 
-# add a dist to order
-
-sub _add_to_order {
+sub _yml {
     my $self = shift;
-    my $name = shift;
+    my $path = shift;
+    my $yml  = shift;
 
-    my $order = $self->order;
+    $path = '/' . $path unless $path =~ m{^/};
 
-    unless ( grep { $name eq $_ } @$order ) {
-        $self->log->info( "add $name to order for " . $self->repository );
-        push @$order, $name;
-        $self->order($order);
-    }
-}
-
-=head2 update_order
-
-regenate order
-
-=cut
-
-sub update_order {
-    my $self = shift;
-    my %args = @_;
-    $self->log->info( "update order for " . $self->repository );
-
-    my @dists = @{ $args{for_dists} || [] };
-    unless (@dists) {
-        my ($out) = Shipwright::Util->run(
-            [ 'svn', 'ls', $self->repository . '/scripts' ] );
-        my $sep = $/;
-        @dists = split /$sep/, $out;
-        chomp @dists;
-        s{/$}{} for @dists;
+    my ( $p_dir, $f );
+    if ( $path =~ m{(.*)/(.*)$} ) {
+        $p_dir = $1;
+        $f     = $2;
     }
 
-    my $require = {};
-
-    for (@dists) {
-        $self->_fill_deps( %args, require => $require, dist => $_ );
-    }
-
-    require Algorithm::Dependency::Ordered;
-    require Algorithm::Dependency::Source::HoA;
-
-    my $source = Algorithm::Dependency::Source::HoA->new($require);
-    $source->load();
-    my $dep = Algorithm::Dependency::Ordered->new( source => $source, )
-      or die $@;
-    my $order = $dep->schedule_all();
-    $self->order($order);
-}
-
-sub _fill_deps {
-    my $self    = shift;
-    my %args    = @_;
-    my $require = $args{require};
-    my $dist    = $args{dist};
-
-    my ($string) = Shipwright::Util->run(
-        [ 'svn', 'cat', $self->repository . "/scripts/$_/require.yml" ], 1 );
-
-    my $req = Shipwright::Util::Load($string) || {};
-
-    if ( $req->{requires} ) {
-        for (qw/requires recommends build_requires/) {
-            push @{ $require->{$dist} }, keys %{ $req->{$_} }
-              if $args{"keep_$_"};
-        }
-    }
-    else {
-
-        #for back compatbility
-        push @{ $require->{$dist} }, keys %$req;
-    }
-
-    for my $dep ( @{ $require->{$dist} } ) {
-        next if $require->{$dep};
-        $self->_fill_deps( %args, dist => $dep );
-    }
-}
-
-=head2 order
-
-get or set order
-
-=cut
-
-sub order {
-    my $self  = shift;
-    my $order = shift;
-    if ($order) {
+    if ($yml) {
         my $dir = tempdir( CLEANUP => 1 );
-        my $file = File::Spec->catfile( $dir, 'order.yml' );
+        my $file = File::Spec->catfile( $dir, $f );
 
         $self->checkout(
-            path   => '/shipwright',
+            path   => $p_dir,
             target => $dir,
         );
 
-        Shipwright::Util::DumpFile( $file, $order );
-        $self->commit( path => $file, comment => "set order" );
-
+        Shipwright::Util::DumpFile( $file, $yml );
+        $self->commit( path => $file, comment => "updated $path" );
     }
     else {
-        my ($out) = Shipwright::Util->run(
-            [ 'svn', 'cat', $self->repository . '/shipwright/order.yml' ] );
+        my ($out) =
+          Shipwright::Util->run( [ 'svn', 'cat', $self->repository . $path ] );
         return Shipwright::Util::Load($out);
     }
 }
 
-=head2 map
+=item info
 
-get or set map
-
-=cut
-
-sub map {
-    my $self = shift;
-    my $map  = shift;
-    if ($map) {
-        my $dir = tempdir( CLEANUP => 1 );
-        my $file = File::Spec->catfile( $dir, 'map.yml' );
-
-        $self->checkout(
-            path   => '/shipwright',
-            target => $dir,
-        );
-
-        Shipwright::Util::DumpFile( $file, $map );
-        $self->commit( path => $file, comment => "set map" );
-
-    }
-    else {
-        my ($out) = Shipwright::Util->run(
-            [ 'svn', 'cat', $self->repository . '/shipwright/map.yml' ] );
-        return Shipwright::Util::Load($out);
-    }
-}
-
-=head2 source
-
-get or set source
-
-=cut
-
-sub source {
-    my $self   = shift;
-    my $source = shift;
-    if ($source) {
-        my $dir = tempdir( CLEANUP => 1 );
-        my $file = File::Spec->catfile( $dir, 'source.yml' );
-
-        $self->checkout(
-            path   => '/shipwright',
-            target => $dir,
-        );
-
-        Shipwright::Util::DumpFile( $file, $source );
-        $self->commit( path => $file, comment => "set source" );
-
-    }
-    else {
-        my ($out) = Shipwright::Util->run(
-            [ 'svn', 'cat', $self->repository . '/shipwright/source.yml' ] );
-        return Shipwright::Util::Load($out);
-    }
-}
-
-=head2 delete
-
-wrapper of delete cmd of svn
-
-=cut
-
-sub delete {
-    my $self = shift;
-    my $path = shift || '';
-    if ( $self->info($path) ) {
-        $self->log->info( "delete " . $self->repository . "/$path" );
-        Shipwright::Util->run( $self->_cmd( delete => path => $path ), 1 );
-    }
-}
-
-=head2 info
-
-wrapper of info cmd of svn
+A wrapper around svn's info command.
 
 =cut
 
 sub info {
     my $self = shift;
-    my $path = shift;
-    my ( $info, $err ) =
-      Shipwright::Util->run( $self->_cmd( info => path => $path ), 1 );
-    if ($err) {
-        $err =~ s/\s+$//;
-        $self->log->warn($err);
-        return;
+    my ( $info, $err ) = $self->SUPER::info(@_);
+
+    if (wantarray) {
+        return $info, $err;
     }
-    return $info;
+    else {
+        if ($err) {
+            $err =~ s/\s+$//;
+            $self->log->warn($err);
+            return;
+        }
+        return $info;
+    }
 }
 
-=head2 propset
+=item check_repository
 
-wrapper of propset cmd of svn
+Check if the given repository is valid.
 
 =cut
 
-sub propset {
+sub check_repository {
     my $self = shift;
     my %args = @_;
-    my $dir  = tempdir( CLEANUP => 1 );
 
-    $self->checkout( target => $dir, );
-    Shipwright::Util->run(
-        $self->_cmd(
-            propset => %args,
-            path => File::Spec->catfile( $dir, $args{path} )
-        )
-    );
+    if ( $args{action} eq 'create' ) {
 
-    $self->commit(
-        path    => File::Spec->catfile( $dir, $args{path} ),
-        comment => "set prop $args{type}"
-    );
+        my ( $info, $err ) = $self->info;
+
+        return 1 if $info || $err && $err =~ /Not a valid URL/;
+
+    }
+    else {
+        return $self->SUPER::check_repository(@_);
+    }
+    return;
 }
 
-=head2 test_script
-
-set test_script for a project, aka. udpate t/test script
-
-=cut
-
-sub test_script {
+sub _update_file {
     my $self   = shift;
-    my %args   = @_;
-    my $script = $args{source};
-    croak 'need source option' unless $script;
+    my $path   = shift;
+    my $latest = shift;
 
-    my $dir = tempdir( CLEANUP => 1 );
+    if ( $path =~ m{(.*)/(.*)$} ) {
+        my $dir = tempdir( CLEANUP => 0 );
+        my $file = File::Spec->catfile( $dir, $2 );
 
-    $self->checkout(
-        path   => '/t',
-        target => $dir,
-    );
+        $self->checkout(
+            path   => $1,
+            target => $dir,
+        );
 
-    my $file = File::Spec->catfile( $dir, 'test' );
-
-    copy( $args{source}, $file );
-    $self->commit( path => $file, comment => "update test script" );
+        copy( $latest, $file );
+        $self->commit(
+            path    => $file,
+            comment => "updated $path",
+        );
+    }
 }
 
-=head2 requires
-return hashref to require.yml for a dist
+=back
+
 =cut
-
-sub requires {
-    my $self = shift;
-    my $name = shift;
-
-    my ($string) = Shipwright::Util->run(
-        [ 'svn', 'cat', $self->repository . "/scripts/$name/require.yml" ], 1 );
-    return Shipwright::Util::Load($string) || {};
-}
 
 1;
-
-__END__
-
-=head1 NAME
-
-Shipwright::Backend::SVN - svn backend
-
-
-=head1 DESCRIPTION
-
-
-=head1 DEPENDENCIES
-
-
-None.
-
-
-=head1 INCOMPATIBILITIES
-
-None reported.
-
-
-=head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
-
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
-

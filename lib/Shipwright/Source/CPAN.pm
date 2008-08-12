@@ -18,6 +18,12 @@ use base qw/Shipwright::Source::Base/;
 my $cpan_dir = tempdir( CLEANUP => 0 );
 unshift @INC, $cpan_dir;
 
+=head1 NAME
+
+Shipwright::Source::CPAN - CPAN source
+
+=head1 DESCRIPTION
+
 =head2 new
 
 =cut
@@ -25,6 +31,7 @@ unshift @INC, $cpan_dir;
 sub new {
     my $class = shift;
     my $self  = $class->SUPER::new(@_);
+
     CPAN::Config->use;
 
     mkdir File::Spec->catfile( $cpan_dir, 'CPAN' );
@@ -39,7 +46,7 @@ sub new {
           File::Spec->catfile( $cpan_dir, 'sources' );
         $CPAN::Config->{prefs_dir} = File::Spec->catfile( $cpan_dir, 'prefs' );
         $CPAN::Config->{prerequisites_policy} = 'follow';
-        $CPAN::Config->{urllist} ||= [];
+        $CPAN::Config->{urllist}              = [];
         write_file( $config_file,
             Data::Dumper->Dump( [$CPAN::Config], ['$CPAN::Config'] ) );
 
@@ -60,70 +67,87 @@ sub run {
           Shipwright::Source::Compressed->new( %$self, _no_update_url => 1 );
         $compressed->run(@_);
     }
+    else {
+        die 'invalid source: ' . $self->source;
+    }
 }
 
 sub _run {
     my $self = shift;
     return if $self->source eq 'perl';    # don't expand perl itself;
 
-    my $module = CPAN::Shell->expand( 'Module', $self->source );
+    my ( $source, $distribution );
 
-    unless ($module) {
-        $self->log->warn( "can't find "
-              . $self->source
-              . ' on CPAN, assuming you will manually fix it. good luck!' );
-        return;
+    Shipwright::Util->select( 'cpan' );
+
+    if ( $self->source =~ /\.tar\.gz$/ ) {
+
+        # it's a disribution
+        $distribution = CPAN::Shell->expand( 'Distribution', $self->source );
+
+        unless ($distribution) {
+            $self->log->warn( "can't find "
+                  . $self->source
+                  . ' on CPAN, assuming you will manually fix it. good luck!' );
+            return;
+        }
+
+        # distribution source isn't good for shipwright, convert it to a
+        # module name it contains
+        $self->source( ( $distribution->containsmods )[0] );
+
+        $source = $distribution->{ID};
+    }
+    else {
+
+        # it's a module
+        my $module = CPAN::Shell->expand( 'Module', $self->source );
+
+        unless ($module) {
+            $self->log->warn( "can't find "
+                  . $self->source
+                  . ' on CPAN, assuming you will manually fix it. good luck!' );
+            return;
+        }
+
+        $source = $module->cpan_file;
+
+        $distribution = $module->distribution;
+
+        my $info = CPAN::DistnameInfo->new( $module->cpan_file );
+
+        if ( $self->version ) {
+            my $latest_version = $info->version;
+            my $version        = $self->version;
+            if ( $latest_version =~ /^v/ && $version !~ /^v/ ) {
+                $version = 'v' . $version;
+            }
+            $distribution->{ID} =~ s/$latest_version/$version/;
+            $source             =~ s/$latest_version/$version/;
+        }
     }
 
-    $module->distribution->get;
+    my $name = CPAN::DistnameInfo->new( $distribution->{ID} )->dist;
 
-    my $dist = CPAN::DistnameInfo->new( $module->cpan_file )->dist;
-    $self->name( 'cpan-' . $dist );
-    $self->_update_map( $self->source, 'cpan-' . $dist );
+
+    if ( $name eq 'perl' ) {
+        die 'perl itself contains ' . $self->source . ', will not process';
+    }
+
+    $distribution->get;
+
+    Shipwright::Util->select( 'stdout' );
+
+    $self->name( 'cpan-' . $name );
+    $self->_update_map( $self->source, 'cpan-' . $name );
 
     $self->source(
         File::Spec->catfile(
-            $CPAN::Config->{keep_source_where}, 'authors',
-            'id',                               $module->cpan_file
+            $CPAN::Config->{keep_source_where},
+            'authors', 'id', $source
         )
     );
     return 1;
 }
 
 1;
-
-__END__
-
-=head1 NAME
-
-Shipwright::Source::CPAN - CPAN source
-
-
-=head1 DESCRIPTION
-
-
-=head1 DEPENDENCIES
-
-None.
-
-
-=head1 INCOMPATIBILITIES
-
-None reported.
-
-
-=head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
-
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.

@@ -6,50 +6,92 @@ use Carp;
 
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
-    qw/repository log_level install_base build_base skip skip_test only_test
-      force log_file/
+    qw/build_base skip skip_test only_test install_base
+      force log_file flags name perl only with/
 );
 
 use Shipwright;
-
-=head2 options
-=cut
+use Cwd 'abs_path';
 
 sub options {
     (
-        'r|repository=s' => 'repository',
-        'l|log-level=s'  => 'log_level',
-        'log-file=s'     => 'log_file',
         'install-base=s' => 'install_base',
+        'build-base=s'   => 'build_base',
+        'name=s'         => 'name',
         'skip=s'         => 'skip',
+        'only=s'         => 'only',
+        'flags=s'        => 'flags',
         'skip-test'      => 'skip_test',
         'only-test'      => 'only_test',
         'force'          => 'force',
+        'perl'           => 'perl',
+        'with=s'         => 'with',
     );
 }
-
-=head2 run
-=cut
 
 sub run {
     my $self         = shift;
     my $install_base = shift;
-    $self->install_base($install_base) if $install_base;
+    $self->install_base($install_base)
+      if $install_base && !$self->install_base;
 
-    die "need repository arg" unless $self->repository;
+    if ( $self->install_base ) {
+
+        # convert relative path to be absolute
+        $self->install_base( File::Spec->rel2abs( $self->install_base ) );
+    }
+
+    unless ( $self->name ) {
+        if ( $self->repository =~ m{([-.\w]+)/([.\d]+)$} ) {
+            $self->name("$1-$2");
+        }
+        elsif ( $self->repository =~ /([-.\w]+)$/ ) {
+            $self->name($1);
+        }
+    }
 
     $self->skip( { map { $_ => 1 } split /\s*,\s*/, $self->skip || '' } );
 
-    my $shipwright = Shipwright->new(
-        repository => $self->repository,
-        log_level  => $self->log_level,
-        log_file   => $self->log_file,
-        build_skip => $self->skip,
+    if ( $self->only ) {
+        $self->only( { map { $_ => 1 } split /\s*,\s*/, $self->only } );
+    }
+
+    $self->flags(
+        {
+            default => 1,
+            map { $_ => 1 } split /\s*,\s*/, $self->flags || ''
+        }
     );
+
+    $self->with( { map { split /=/ } split /\s*,\s*/, $self->with || '' } );
+
+    my %source;
+    for my $name ( keys %{ $self->with } ) {
+        my $shipwright = Shipwright->new(
+            name   => $name,
+            source => $self->with->{$name},
+            follow => 0,
+            map { $_ => $self->$_ }
+              qw/repository only_test perl/
+        );
+        $source{$name} = $shipwright->source->run;
+    }
+
+    my $shipwright = Shipwright->new(
+        map { $_ => $self->$_ }
+          qw/repository log_level log_file skip skip_test
+          flags name force only_test install_base build_base perl only/
+    );
+
     $shipwright->backend->export( target => $shipwright->build->build_base );
-    $shipwright->build->skip_test(1) if $self->skip_test;
-    $shipwright->build->run( map { $_ => $self->$_ }
-          qw/install_base only_test force/ );
+
+    my $dists_dir = $shipwright->build->build_base;
+    for my $name ( keys %source ) {
+        my $dir = File::Spec->catfile( $dists_dir, 'dists', $name );
+        system("rm -rf $dir");
+        system("cp -r $source{$name} $dir");
+    }
+    $shipwright->build->run();
 }
 
 1;
@@ -58,29 +100,29 @@ __END__
 
 =head1 NAME
 
-Shipwright::Script::Build - build the specified project
+Shipwright::Script::Build - Build the specified project
 
 =head1 SYNOPSIS
 
-  shipwright build           build a project
+ build -r [repository]
 
- Options:
-   --repository(-r)   specify the repository of our project
-   --log-level(-l)    specify the log level
-   --install-base     specify install base. default is an autocreated temp dir
-   --skip             specify dists which'll be skipped
-   --skip-test        specify whether to skip test
-   --only-test        just test(the running script is t/test)
+=head1 OPTIONS
 
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-    
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+ -r [--repository] REPOSITORY : specify the repository of our project
+ -l [--log-level] LOGLEVEL    : specify the log level
+                                (info, debug, warn, error, or fatal)
+ --log-file FILENAME          : specify the log file
+ --install-base PATH          : specify install base, default is an autocreated
+                                temp dir
+ --skip DISTS                 : specify dists which will be skipped
+ --only DISTS                 : specify dists to be installed (no others will
+                                be installed)
+ --skip-test                  : specify whether to skip tests
+ --only-test                  : just test (run t/test)
+ --flags FLAGS                : specify flags
+ --name NAME                  : specify the name of the project
+ --perl PATH                  : specify the path of perl that run the commands
+                                in scripts/
+ --with name=source,...       : don't build the dist of the name in repo,
+                                use the one specified here instead.
 

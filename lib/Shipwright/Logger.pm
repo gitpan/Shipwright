@@ -3,6 +3,15 @@ use strict;
 use warnings;
 use Carp;
 use Log::Log4perl;
+use Scalar::Util qw/blessed/;
+
+=head1 NAME
+
+Shipwright::Logger -
+
+=head1 SYNOPSIS
+
+    use Shipwright::Logger;
 
 =head2 new
 
@@ -10,28 +19,49 @@ use Log::Log4perl;
 
 sub new {
     my $class      = shift;
-    my $shipwright = shift;
 
     my $self = {};
     bless $self, $class;
 
     if ( not Log::Log4perl->initialized ) {
-        $class->_initialize_log4perl($shipwright);
+        $class->_initialize_log4perl(@_);
     }
     return $self;
 }
 
 sub _initialize_log4perl {
-    my $class      = shift;
-    my $shipwright = shift;
+    my $class = shift;
+    my $ref   = $_[0];
 
-    my $log_level = uc $shipwright->log_level || 'INFO';
+    my ( $log_level, $log_file );
+
+    if ( blessed $ref ) {
+
+        # so it's an object, we assuming it has log_level and log_file subs
+        $log_level = $ref->log_level;
+        $log_file  = $ref->log_file;
+    }
+    elsif ( ref $ref ) {
+
+        # it's a hashref
+        $log_level = $ref->{log_level};
+        $log_file  = $ref->{log_file};
+    }
+    else {
+
+        # not ref at all
+        my %hash = @_;
+        $log_level = $hash{log_level};
+        $log_file  = $hash{log_file};
+    }
+
+    $log_level = uc $log_level || 'FATAL';
     my %default;
 
-    if ( $shipwright->log_file ) {
+    if ($log_file) {
         %default = (
             'log4perl.rootLogger'             => "$log_level,File",
-            'log4perl.appender.File.filename' => $shipwright->log_file,
+            'log4perl.appender.File.filename' => $log_file,
             'log4perl.appender.File'        => 'Log::Log4perl::Appender::File',
             'log4perl.appender.File.stderr' => 1,
             'log4perl.appender.File.layout' =>
@@ -59,47 +89,4 @@ sub _initialize_log4perl {
 
 __END__
 
-=head1 NAME
-
-Shipwright::Logger - 
-
-
-=head1 SYNOPSIS
-
-    use Shipwright::Logger;
-
-=head1 DESCRIPTION
-
-
 =head1 INTERFACE
-
-
-
-=head1 DEPENDENCIES
-
-
-None.
-
-
-=head1 INCOMPATIBILITIES
-
-None reported.
-
-
-=head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
-
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
-
-

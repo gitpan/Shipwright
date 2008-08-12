@@ -8,7 +8,7 @@ use base qw/Class::Accessor::Fast/;
 
 __PACKAGE__->mk_accessors(
     qw/install_base perl build_base skip_test commands log
-      skip only_test force order/
+      skip only_test force order flags name only/
 );
 
 use File::Spec;
@@ -17,10 +17,14 @@ use File::Copy::Recursive qw/dircopy/;
 use File::Copy qw/move copy/;
 use File::Find qw/find/;
 use File::Slurp;
+use File::Path;
 
 =head2 new
 
 =cut
+
+# keeps the info of the already installed dists
+my ( $installed, $installed_file );
 
 sub new {
     my $class = shift;
@@ -29,11 +33,16 @@ sub new {
 
     $self->log( Log::Log4perl->get_logger( ref $self ) );
 
-    $self->{build_base} =
+    $self->{build_base} ||=
       File::Spec->catfile( tempdir( CLEANUP => 0 ), 'build' );
 
+    $self->name('vessel') unless $self->name;
+    $self->skip( {} ) unless $self->skip;
+
     unless ( $self->install_base ) {
-        $self->install_base( tempdir( CLEANUP => 0 ) );
+
+        my $dir = tempdir( $self->name . '-XXXXXX', DIR => File::Spec->tmpdir );
+        $self->install_base( File::Spec->catfile( $dir, $self->name ) );
     }
 
     no warnings 'uninitialized';
@@ -81,7 +90,7 @@ sub run {
 
     $self->log->info( 'run build to install to ' . $self->install_base );
 
-    mkdir $self->install_base unless -e $self->install_base;
+    mkpath $self->install_base unless -e $self->install_base;
 
     chdir $self->build_base;
 
@@ -91,16 +100,85 @@ sub run {
     else {
         dircopy( 'etc', File::Spec->catfile( $self->install_base, 'etc' ) );
 
-        $self->order(
-            Shipwright::Util::LoadFile(
-                File::Spec->catfile( 'shipwright', 'order.yml' )
-            )
-        );
+        my $installed_hash = {};
+        $installed_file =
+          File::Spec->catfile( $self->install_base, 'installed.yml' );
+        if ( -e $installed_file ) {
+            $installed = Shipwright::Util::LoadFile($installed_file);
+            $installed_hash = { map { $_ => 1 } @$installed };
+        }
+        else {
+            $installed = [];
+        }
 
-        for my $dist ( @{ $self->order } ) {
-            unless ( $self->skip && $self->skip->{$dist} ) {
-                $self->_install($dist);
+        my $order =
+          Shipwright::Util::LoadFile(
+            File::Spec->catfile( 'shipwright', 'order.yml' ) )
+          || [];
+
+        my ( $flags, $ktf );
+        if ( -e File::Spec->catfile( 'shipwright', 'flags.yml' ) ) {
+
+            $flags = Shipwright::Util::LoadFile(
+                File::Spec->catfile( 'shipwright', 'flags.yml' ) );
+
+            # fill not specified but mandatory flags
+            if ( $flags->{__mandatory} ) {
+                for my $list ( values %{ $flags->{__mandatory} } ) {
+                    next unless @$list;
+                    next if grep { $self->flags->{$_} } @$list;
+                    $self->flags->{ $list->[0] }++;
+                }
             }
+        }
+        else {
+            $flags = {};
+        }
+
+        if ( -e File::Spec->catfile( 'shipwright', 'known_test_failures.yml' ) ) {
+
+            $ktf = Shipwright::Util::LoadFile(
+                File::Spec->catfile( 'shipwright', 'known_test_failures.yml' ) );
+        }
+        else {
+            $ktf = {};
+        }
+
+        # calculate the real order
+        if ( $self->only ) {
+            @$order = grep { $self->only->{$_} } @$order;
+        }
+        else {
+            @$order =
+              grep {
+                (
+                    $flags->{$_}
+                    ? ( grep { $self->flags->{$_} } @{ $flags->{$_} } )
+                    : 1
+                  )
+                  && !$self->skip->{$_}
+              } @$order;
+        }
+
+        # remove the already installed ones
+        @$order = grep { !$installed_hash->{$_} } @$order;
+
+        unless ( $self->perl && -e $self->perl ) {
+            my $perl =
+              File::Spec->catfile( $self->install_base, 'bin', 'perl' );
+
+            # -e $perl makes sense when we install on to another vessel
+            if ( ( grep { /^perl/ } @{$order} ) || -e $perl ) {
+                $self->perl($perl);
+            }
+            else {
+                $self->perl($^X);
+            }
+        }
+
+        for my $dist (@$order) {
+            $self->_install( $dist, $ktf );
+            $self->_record($dist);
             chdir $self->build_base;
         }
 
@@ -117,47 +195,74 @@ sub run {
 sub _install {
     my $self = shift;
     my $dir  = shift;
-
-    my @cmds = read_file( File::Spec->catfile( 'scripts', $dir, 'build' ) );
-    chomp @cmds;
-    @cmds = map { $self->_substitute($_) } @cmds;
+    my $ktf  = shift;
 
     chdir File::Spec->catfile( 'dists', $dir );
 
-    for (@cmds) {
-        my ( $type, $cmd );
-        next unless /\S/;
+    if ( -e File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ) ) {
+        $self->log->info(
+            "found build.pl for $dir, will install $dir using that");
+        Shipwright::Util->run(
+            [
+                $self->perl,
+                File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ),
+                '--install-base' => $self->install_base,
+                '--flags'        => join( ',', keys %{ $self->flags } ),
+                $self->skip_test ? '--skip-test' : (),
+                $self->force     ? '--force'     : (),
+            ]
+        );
 
-        if (/^(\S+):\s*(.*)/) {
-            $type = $1;
-            $cmd  = $2;
-        }
-        else {
-            $type = '';
-            $cmd  = $_;
-        }
+    }
+    else {
 
-        next if $type eq 'clean'; # don't need to clean when install
-        if ( $self->skip_test && $type eq 'test' ) {
-            $self->log->info("skip build $type part in $dir");
-            next;
-        }
+        my @cmds = read_file(
+            File::Spec->catfile( '..', '..', 'scripts', $dir, 'build' ) );
+        chomp @cmds;
+        @cmds = map { $self->_substitute($_) } @cmds;
 
-        $self->log->info("build $type part in $dir");
+        for (@cmds) {
+            my ( $type, $cmd );
+            next unless /\S/ && /^(?!#)/;    # skip commented and blank lines
 
-        if ( system($cmd) ) {
-            $self->log->error("build $dir with failure when run $type: $!");
-            if ( $self->force && $type eq 'error' ) {
-                $self->log->error(
-"although tests failed, will install anyway since we have force arg\n"
-                );
+            if (/^(\S+):\s*(.*)/) {
+                $type = $1;
+                $cmd  = $2;
             }
             else {
+                $type = '';
+                $cmd  = $_;
+            }
+
+            next if $type eq 'clean';        # don't need to clean when install
+            if ( $self->skip_test && $type eq 'test' ) {
+                $self->log->info("skip build $type part in $dir");
+                next;
+            }
+
+            $self->log->info("build $type part in $dir");
+
+            if ( system($cmd) ) {
+                $self->log->error("build $dir with failure when run $type: $!");
+                if ( $type eq 'test' ) {
+                    if ( $self->force ) {
+                        $self->log->error(
+"although tests failed, will install anyway since we have force arg\n"
+                        );
+                        next;
+                    }
+                    ## no critic
+                    elsif ( eval "$ktf->{$dir}" ) {
+                        $self->log->error(
+"although tests failed, will install anyway since it's a known failure\n"
+                        );
+                        next;
+                    }
+                }
                 die "install failed";
             }
         }
     }
-
     $self->log->info("build $dir with success!");
 }
 
@@ -165,23 +270,43 @@ sub _install {
 sub _wrapper {
     my $self = shift;
 
-    my %seen;
-
     my $sub = sub {
         my $file = $_;
         return unless $file and -f $file;
-        return if $seen{$File::Find::name}++;
+
+        # return if it's been wrapped already
+        if ( -l $file ) {
+            $self->log->warn(
+                "seems $file has been already wrapped, skipping\n");
+            return;
+        }
+
         my $dir = ( File::Spec->splitdir($File::Find::dir) )[-1];
         mkdir File::Spec->catfile( $self->install_base,       "$dir-wrapped" )
           unless -d File::Spec->catfile( $self->install_base, "$dir-wrapped" );
+
+        if (
+            -e File::Spec->catfile( $self->install_base, "$dir-wrapped", $file )
+          )
+        {
+            $self->log->warn(
+                'found old '
+                  . File::Spec->catfile( $self->install_base, "$dir-wrapped",
+                    $file )
+                  . ', deleting' . "\n"
+            );
+            unlink File::Spec->catfile( $self->install_base, "$dir-wrapped",
+                $file );
+        }
 
         my $type;
         if ( -T $file ) {
             open my $fh, '<', $file or die "can't open $file: $!";
             my $shebang = <$fh>;
             my $base    = quotemeta $self->install_base;
-            my $perl    = quotemeta $self->perl || $^X;
+            my $perl    = quotemeta $self->perl;
 
+            return unless $shebang;
             if ( $shebang =~ m{$perl} ) {
                 $type = 'perl';
             }
@@ -201,8 +326,7 @@ sub _wrapper {
     # if we have this $type(e.g. perl) installed and have that specific wrapper,
     # then link to it, else link to the normal one
         if (   $type
-            && grep( { $_ eq $type } @{ $self->order } )
-            && !( $self->skip && $self->skip->{$type} )
+            && -e File::Spec->catfile( '..', 'bin', $type )
             && -e File::Spec->catfile( '..', 'etc', "shipwright-$type-wrapper" )
           )
         {
@@ -233,7 +357,7 @@ sub _substitute {
 
     return unless $text;
 
-    my $perl          = $self->perl || $^X;
+    my $perl          = $self->perl;
     my $perl_archname = `$perl -MConfig -e 'print \$Config{archname}'`;
     my $install_base  = $self->install_base;
     $text =~ s/%%PERL%%/$perl/g;
@@ -274,6 +398,17 @@ sub test {
             die;
         }
     }
+}
+
+# record the installed dist, so we don't need to installed it later
+# if at the same install_base
+
+sub _record {
+    my $self = shift;
+    my $dist = shift;
+
+    push @$installed, $dist;
+    Shipwright::Util::DumpFile( $installed_file, $installed );
 }
 
 1;

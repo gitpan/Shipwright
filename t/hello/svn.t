@@ -8,23 +8,22 @@ use File::Copy::Recursive qw/dircopy/;
 use File::Spec;
 use Cwd;
 use Test::More tests => 17;
+use Shipwright::Test qw/has_svn create_svn_repo/;
 
 SKIP: {
-    skip "can't find svn in PATH", 17,
-      unless `whereis svn` && `whereis svnadmin`;
+    skip "no svn found", Test::More->builder->expected_tests
+      unless has_svn();
+
     my $cwd = getcwd;
 
-    my $repo = 'file:///tmp/shipwright_svn/hello';
-
-    system('rm -rf /tmp/shipwright_svn') && warn "delete repo failed: $!";
-    system('svnadmin create /tmp/shipwright_svn')
-      && die "create repo failed: $!";
+    my $repo = create_svn_repo() . '/hello';
 
     my $shipwright = Shipwright->new(
         repository => "svn:$repo",
-        source => File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
+        source     => 'file:'
+          . File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
         log_level => 'FATAL',
-        follow       => 0,
+        follow    => 0,
     );
 
     isa_ok( $shipwright->backend, 'Shipwright::Backend::SVN' );
@@ -35,7 +34,7 @@ SKIP: {
     chomp @dirs;
     is_deeply(
         [@dirs],
-        [ 'bin/', 'dists/', 'etc/', 'scripts/', 'shipwright/', 't/' ],
+        [ 'bin/', 'dists/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 't/' ],
         'initialize works'
     );
 
@@ -56,7 +55,7 @@ SKIP: {
         name         => 'hello',
         source       => $source_dir,
         build_script => $script_dir,
-        log_level => 'FATAL',
+        log_level    => 'FATAL',
     );
     ok( grep( {/Build\.PL/} `svn cat $repo/scripts/Acme-Hello/build` ),
         'build script ok' );
@@ -107,9 +106,10 @@ SKIP: {
     chdir $cwd;
     $shipwright = Shipwright->new(
         repository => "svn:$repo",
-        source => File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
-        name   => 'howdy',
-        follow => 0,
+        source     => 'file:'
+          . File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
+        name      => 'howdy',
+        follow    => 0,
         log_level => 'FATAL',
     );
 

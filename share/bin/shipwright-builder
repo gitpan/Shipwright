@@ -1,0 +1,621 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+use File::Spec;
+use File::Temp qw/tempdir/;
+use File::Copy qw/move copy/;
+use File::Find qw/find/;
+use File::Path;
+use Config;
+use Getopt::Long;
+use Cwd qw/getcwd abs_path/;
+use inc::YAML::Tiny;
+
+my $build_base = getcwd;
+
+my %args;
+
+die "unknown option"
+  unless GetOptions(
+    \%args,                   'install-base=s',
+    'perl=s',                 'skip=s',
+    'flags=s',                'skip-test',
+    'skip-test-except-final', 'only-test',
+    'force',                  'clean',
+    'name=s',                 'help',
+    'noclean',                'only=s',
+    'with=s',
+  );
+
+my $USAGE = <<'END'
+run: ./bin/shipwright-builder
+
+options: 
+
+help: print this usage
+
+install-base: where we will install
+    defaults: a temp dir below your system's tmp
+    e.g. --install-base /home/local/mydist
+
+name: the name of the project. used to create a better named dir if
+    install_base is not supplied
+    e.g. --name mydist
+
+perl: which perl to use for the to be installed dists
+    defaults: if we have perl in the source, it will use that one
+              otherwise, it will use the one which runs this builder script
+    e.g. --perl /usr/bin/perl
+
+skip: dists we don't want to install, comma-separated
+    e.g. --skip perl,Module-Build
+
+only:  dists we want to install only, comma-separated
+    e.g. --only perl,Module-Build
+
+flags: set flags we need, comma-separated
+    e.g.  --flags mysql,standalone
+
+skip-test: skip all the tests
+
+skip-test-except-final: skip all the tests except the final dist
+
+force: if tests fail, install anyway
+
+only-test: test for the installed dists
+    it's used to be sure everything is ok after we install with success,
+    need to specify --install-base if nothing find in __install_base.
+
+clean: clean the source
+
+noclean: don't clean before build
+
+with: don't build the dist of the name in repo, use the one specified here instead.
+    e.g. --with svn=dir:/home/foo/svn
+    'svn' is the dist name, 'dir:/home/foo/svn' is its source, with the format of Shipwright::Source
+
+END
+  ;
+
+if ( $args{'help'} ) {
+    print $USAGE;
+    exit 0;
+}
+
+$args{skip} = { map { $_ => 1 } split /\s*,\s*/, $args{skip} || '' };
+$args{flags} = {
+    default => 1,
+    map { $_ => 1 } split /\s*,\s*/, $args{flags} || ''
+};
+
+$args{with} = { map { split /=/ } split /\s*,\s*/, $args{with} || '' };
+
+if ( $args{only} ) {
+    $args{only} = { map { $_ => 1 } split /\s*,\s*/, $args{only} };
+}
+
+$args{'install-base'} = get_install_base() unless $args{'install-base'};
+
+unless ( $args{name} ) {
+    if ( $build_base =~ m{([-.\w]+)[\\/]([.\d]+)$} ) {
+        $args{name} = "$1-$2";
+    }
+    elsif ( $build_base =~ m{([-.\w]+)$} ) {
+        $args{name} = $1;
+    }
+}
+
+unless ( $args{'install-base'} ) {
+    my $dir = tempdir( $args{name} . '-XXXXXX', DIR => File::Spec->tmpdir );
+    $args{'install-base'} = File::Spec->catfile( $dir, $args{name} );
+    print "no default install-base, will set it to $args{'install-base'}\n";
+}
+
+my $installed;
+my $installed_hash = {};
+my $installed_file =
+  File::Spec->catfile( $args{'install-base'}, 'installed.yml' );
+if ( -e $installed_file ) {
+    $installed =
+      YAML::Tiny->read(
+        File::Spec->catfile( $args{'install-base'}, 'installed.yml' ) );
+    $installed_hash = { map { $_ => 1 } @{ $installed->[0] } };
+}
+else {
+    $installed = YAML::Tiny->new;
+}
+
+$args{'install-base'} = File::Spec->rel2abs( $args{'install-base'} );
+
+# YAML::Tiny objects are array based.
+my $order =
+  ( YAML::Tiny->read( File::Spec->catfile( 'shipwright', 'order.yml' ) ) )->[0];
+
+my ( $flags, $ktf );
+
+if ( -e File::Spec->catfile( 'shipwright', 'flags.yml' ) ) {
+    $flags =
+      ( YAML::Tiny->read( File::Spec->catfile( 'shipwright', 'flags.yml' ) ) )
+      ->[0];
+}
+else {
+    $flags = {};
+}
+
+if ( -e File::Spec->catfile( 'shipwright', 'known_test_failures.yml' ) ) {
+    $ktf = (
+        YAML::Tiny->read(
+            File::Spec->catfile( 'shipwright', 'known_test_failures.yml' )
+        )
+    )->[0];
+}
+else {
+    $ktf = {};
+}
+
+# fill not specified but mandatory flags
+if ( $flags->{__mandatory} ) {
+    for my $list ( values %{ $flags->{__mandatory} } ) {
+        next unless @$list;
+        next if grep { $args{flags}{$_} } @$list;
+        $args{flags}{ $list->[0] }++;
+    }
+}
+
+# calculate the real order
+if ( $args{only} ) {
+    @$order = grep { $args{only}->{$_} } @$order;
+}
+else {
+    @$order =
+      grep {
+        ( $flags->{$_} ? ( grep { $args{flags}{$_} } @{ $flags->{$_} } ) : 1 )
+          && !$args{skip}->{$_}
+      } @$order;
+}
+
+# remove the already installed ones
+@$order = grep { !$installed_hash->{$_} } @$order;
+
+my $log;
+
+if ( $args{'only-test'} ) {
+    open $log, '>', 'test.log' or die $!;
+
+    test();
+}
+elsif ( $args{'clean'} ) {
+    open $log, '>', 'clean.log' or die $!;
+
+    system('rm -rf tmp_dists') && die "rm tmp_dists failed\n";
+
+    print $log "removed tmp_dists";
+
+    for my $dist (@$order) {
+        clean($dist);
+        chdir $build_base;
+    }
+
+    unlink '__need_clean';
+}
+else {
+
+    # for install
+    open $log, '>', 'build.log' or die $!;
+
+    if ( -e '__need_clean' && !$args{noclean} ) {
+        print "seems it has been built before, need to clean first\n";
+        print $log "seems it has been built before, need to clean first\n";
+        system(
+            "$0 --clean "
+              . (
+                $args{only}
+                ? '--only ' . join( ',', keys %{ $args{only} } )
+                : '--skip ' . ( join( ',', keys %{ $args{skip} } || q{''} ) )
+              )
+        ) && die 'clean failed.';
+    }
+
+    # set clean flag again
+    open my $tmp_fh, '>', '__need_clean' or die $!;
+    close $tmp_fh;
+
+    process_tmp_dists() if keys %{ $args{with} };
+
+    # some perl distribution( e.g. on fedora ) doesn't have CPAN module
+    # so we put it in eval block
+    eval {
+        require CPAN;
+
+        # don't bother people no CPAN::Config since it's not a problem
+        require CPAN::Config;
+
+        # we don't want any prereqs any more!
+        no warnings 'once';
+        $CPAN::Config->{prerequisites_policy} = 'ignore';
+    };
+
+    open my $fh, '>', '__install_base'
+      or die "can't write to __install_base: $!";
+    print $fh $args{'install-base'};
+    close $fh;
+
+    unless ( $args{perl} && -e $args{perl} ) {
+        my $perl = File::Spec->catfile( $args{'install-base'}, 'bin', 'perl' );
+
+        # -e $perl makes sense when we install onto another vessel
+        if ( ( grep { /^perl/ } @$order ) || -e $perl ) {
+            $args{perl} = $perl;
+        }
+    }
+
+    {
+        no warnings 'uninitialized';
+        $ENV{DYLD_LIBRARY_PATH} =
+          File::Spec->catfile( $args{'install-base'}, 'lib' ) . ':'
+          . $ENV{DYLD_LIBRARY_PATH};
+        $ENV{LD_LIBRARY_PATH} =
+          File::Spec->catfile( $args{'install-base'}, 'lib' ) . ':'
+          . $ENV{LD_LIBRARY_PATH};
+        $ENV{PERL5LIB} =
+          File::Spec->catfile( $args{'install-base'}, 'lib', 'perl5',
+            'site_perl' )
+          . ':'
+          . File::Spec->catfile( $args{'install-base'}, 'lib', 'perl5' ) . ':'
+          . $ENV{PERL5LIB};
+        $ENV{PATH} =
+            File::Spec->catfile( $args{'install-base'}, 'bin' ) . ':'
+          . File::Spec->catfile( $args{'install-base'}, 'sbin' ) . ':'
+          . $ENV{PATH};
+        $ENV{PERL_MM_USE_DEFAULT} = 1;
+    }
+
+    mkpath $args{'install-base'} unless -e $args{'install-base'};
+
+    mkdir File::Spec->catfile( $args{'install-base'},       'etc' )
+      unless -e File::Spec->catfile( $args{'install-base'}, 'etc' );
+    mkdir File::Spec->catfile( $args{'install-base'},       'tools' )
+      unless -e File::Spec->catfile( $args{'install-base'}, 'tools' );
+
+    for ( 'shipwright-script-wrapper', 'shipwright-perl-wrapper' ) {
+        copy( File::Spec->catfile( 'etc', $_ ),
+            File::Spec->catfile( $args{'install-base'}, 'etc', $_ ) );
+    }
+
+    for ( 'shipwright-utility', 'shipwright-source-bash',
+        'shipwright-source-tcsh' )
+    {
+        copy( File::Spec->catfile( 'etc', $_ ),
+            File::Spec->catfile( $args{'install-base'}, 'tools', $_ ) );
+    }
+
+    chmod oct 755,
+      File::Spec->catfile( $args{'install-base'}, 'tools',
+        'shipwright-utility' );
+
+    for my $dist (@$order) {
+        install($dist);
+        record($dist);
+        chdir $build_base;
+    }
+
+    mkdir File::Spec->catfile( $args{'install-base'},       'bin' )
+      unless -e File::Spec->catfile( $args{'install-base'}, 'bin' );
+
+    wrap_bin();
+    print "install finished, the dists are at $args{'install-base'}\n";
+    print $log "install finished, the dists are at $args{'install-base'}\n";
+}
+
+sub install {
+    my $dir = shift;
+
+    if ( $args{with}{$dir} && -e File::Spec->catfile( 'tmp_dists', $dir ) ) {
+        chdir File::Spec->catfile( 'tmp_dists', $dir );
+    }
+    else {
+        chdir File::Spec->catfile( 'dists', $dir );
+    }
+
+    my $skip_test = $args{'skip-test'} || $args{'skip-test-except-final'};
+
+    if ( $dir eq $order->[-1] && $args{'skip-test-except-final'} ) {
+
+        # do not skip our main dist's test
+        $skip_test = 0;
+    }
+
+    print "start to build and install $dir\n";
+
+    if ( -e File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ) ) {
+        print $log "found build.pl for $dir, will install $dir using that\n";
+        my $cmd = join ' ', $args{perl} || $^X,
+          File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ),
+          '--install-base' => $args{'install-base'},
+          '--flags'        => join( ',', keys %{ $args{flags} } ),
+          $skip_test ? '--skip-test' : (), $args{'force'} ? '--force' : (),
+          $args{'clean'} ? '--clean' : ();
+        if ( system($cmd) ) {
+            print $log "build $dir with failure.\n";
+            die "build $dir with failure.\n";
+        }
+    }
+    else {
+        my $cmds =
+          cmds( File::Spec->catfile( '..', '..', 'scripts', $dir, 'build' ) );
+
+        for (@$cmds) {
+            my ( $type, $cmd ) = @$_;
+            next if $type eq 'clean';
+
+            if ( $skip_test && $type eq 'test' ) {
+                print $log "skip build $type part in $dir\n";
+                next;
+            }
+
+            print $log "build $type part in $dir with cmd: $cmd\n";
+
+            print "running shipwright build command: $cmd\n";
+            if ( system($cmd) ) {
+                print $log "build $dir $type part with failure.\n";
+                if ( $type eq 'test' ) {
+                    if ( $args{force} ) {
+                        print $log
+"although tests failed, will install anyway since we have force arg\n";
+                        next;
+                    }
+                    ## no critic
+                    elsif ( eval "$ktf->{$dir}" ) {
+                        print $log
+"although tests failed, will install anyway since it's a known failure\n";
+                        next;
+                    }
+                }
+                die "build $dir $type part with failure.\n";
+            }
+            else {
+                print $log "build $dir $type part with success!\n";
+            }
+        }
+    }
+
+    print $log "build $dir with success!\n";
+    print '=' x 80, "\n";
+}
+
+sub wrap_bin {
+    my $self = shift;
+
+    my $sub = sub {
+        my $file = $_;
+
+        return unless -f $file;
+
+        # return if it's been wrapped already
+        if ( -l $file ) {
+            print $log "seems $file has been already wrapped, skipping\n";
+            return;
+        }
+
+        my $dir = ( File::Spec->splitdir($File::Find::dir) )[-1];
+        mkdir File::Spec->catfile( $args{'install-base'}, "$dir-wrapped" )
+          unless -d File::Spec->catfile( $args{'install-base'},
+            "$dir-wrapped" );
+
+        if (
+            -e File::Spec->catfile( $args{'install-base'}, "$dir-wrapped",
+                $file ) )
+        {
+            print $log 'found old '
+              . File::Spec->catfile( $args{'install-base'}, "$dir-wrapped",
+                $file )
+              . ', deleting' . "\n";
+            unlink File::Spec->catfile( $args{'install-base'}, "$dir-wrapped",
+                $file );
+        }
+
+        my $type;
+        if ( -T $file ) {
+            open my $fh, '<', $file or die "can't open $file: $!";
+            my $shebang = <$fh>;
+            if (
+                $shebang =~ m{
+\Q$args{'install-base'}\E(?:/|\\)(?:s?bin|libexec)(?:/|\\)(\w+)
+|\benv\s+(\w+)
+}x
+              )
+            {
+                $type = $1 || $2;
+            }
+        }
+
+        move( $file =>
+              File::Spec->catfile( $args{'install-base'}, "$dir-wrapped" ) )
+          or die $!;
+
+    # if we have this $type(e.g. perl) installed and have that specific wrapper,
+    # then link to it, else link to the normal one
+        if (   $type
+            && -e File::Spec->catfile( '..', 'bin', $type )
+            && -e File::Spec->catfile( '..', 'etc', "shipwright-$type-wrapper" )
+          )
+        {
+            symlink File::Spec->catfile( '..', 'etc',
+                "shipwright-$type-wrapper" ) => $file
+              or die $!;
+        }
+        else {
+
+            symlink File::Spec->catfile( '..', 'etc',
+                'shipwright-script-wrapper' ) => $file
+              or die $!;
+        }
+        chmod oct 755, $file;
+    };
+
+    my @dirs =
+      grep { -d $_ }
+      map { File::Spec->catfile( $args{'install-base'}, $_ ) }
+      qw/bin sbin libexec/;
+    find( $sub, @dirs ) if @dirs;
+
+}
+
+sub substitute {
+    my $text = shift;
+    return unless $text;
+
+    my $install_base = $args{'install-base'};
+    $text =~ s/%%INSTALL_BASE%%/$install_base/g;
+
+    my $perl;
+
+    if ( $args{perl} && -e $args{perl} ) {
+        $perl = $args{perl};
+    }
+    else {
+        $perl = $^X;
+    }
+
+    my $perl_archname = `$perl -MConfig -e 'print \$Config{archname}'`;
+    $text =~ s/%%PERL%%/$perl/g;
+    $text =~ s/%%PERL_ARCHNAME%%/$perl_archname/g;
+
+    return $text;
+}
+
+sub test {
+
+    my $cmds = cmds( File::Spec->catfile( 't', 'test' ) );
+
+    for (@$cmds) {
+        my ( $type, $cmd ) = @$_;
+        print $log "run tests $type part with cmd: $cmd\n";
+        if ( system($cmd ) ) {
+            die "something wrong when execute $cmd.";
+        }
+        else {
+            print $log "run test $type part with success\n";
+        }
+    }
+    print $log "run tests with success\n";
+}
+
+sub cmds {
+    my $file = shift;
+
+    my @cmds;
+
+    {
+        open my $fh, '<', $file or die "$!: $file";
+        @cmds = <$fh>;
+        close $fh;
+        chomp @cmds;
+        @cmds = map { substitute($_) } @cmds;
+    }
+
+    my $return = [];
+    for (@cmds) {
+        my ( $type, $cmd );
+        next unless /\S/ && /^(?!#)/;    # skip commented and blank lines
+
+        if (/^(\S+):\s*(.*)/) {
+            $type = $1;
+            $cmd  = $2;
+        }
+        else {
+            $type = '';
+            $cmd  = $_;
+        }
+        push @$return, [ $type, $cmd ];
+    }
+
+    return $return;
+}
+
+sub clean {
+    my $dir = shift;
+
+    my $cmd;
+    chdir File::Spec->catfile( 'dists', $dir );
+
+    if ( -e File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ) ) {
+        print $log "found build.pl for $dir, will clean $dir using that\n";
+        $cmd = join ' ', $args{perl} || $^X,
+          File::Spec->catfile( '..', '..', 'scripts', $dir, 'build.pl' ),
+          '--install-base' => $args{'install-base'},
+          '--flags'        => join( ',', keys %{ $args{flags} } ),
+          '--clean';
+    }
+    else {
+        my $cmds =
+          cmds( File::Spec->catfile( '..', '..', 'scripts', $dir, 'build' ) );
+
+        for (@$cmds) {
+            my ( $type, $c ) = @$_;
+            if ( $type eq 'clean' ) {
+                $cmd = $c;
+                last;
+            }
+        }
+    }
+
+    if ( system($cmd) ) {
+        print $log "clean $dir with failure.\n";
+    }
+    else {
+        print $log "clean $dir with success.\n";
+    }
+
+    print '=' x 80, "\n";
+}
+
+sub get_install_base {
+    if ( open my $fh, '<', '__install_base' ) {
+        my $install_base = <$fh>;
+        close $fh;
+        chomp $install_base;
+        return $install_base;
+    }
+}
+
+sub process_tmp_dists {
+    mkdir 'tmp_dists';
+
+    for my $name ( keys %{ $args{with} } ) {
+        my $cmd = cmd( $name, $args{with}{$name} );
+        if ($cmd) {
+            system($cmd) && die "run $cmd with failure";
+        }
+    }
+}
+
+# this's a simpler version compared to shipwright's source part, only
+# dir, svn and svk are supported currently.
+# warn: dist in svn and svk must be a dir instead of a compressed file.
+
+sub cmd {
+    my ( $name, $source ) = @_;
+
+    if ( $source =~ s/^dir(ectory)?://i ) {
+        return "cp -r $source tmp_dists/$name";
+    }
+    elsif ( $source =~ /^svn:/i ) {
+        $source =~ s{^svn:(?!//)}{}i;
+        return "svn export $source tmp_dists/$name";
+    }
+    elsif ( $source =~ m{^(//|svk:)}i ) {
+        $source =~ s/^svk://i;
+        return "svk co $source tmp_dists/$name";
+    }
+
+    return;
+}
+
+sub record {
+    my $dist = shift;
+    push @{ $installed->[0] }, $dist;
+    $installed->write($installed_file);
+}
+

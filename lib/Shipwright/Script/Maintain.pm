@@ -6,21 +6,16 @@ use Carp;
 
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
-    qw/repository log_level update_order keep_recommends
-      keep_build_requires keep_requires for_dists log_file/
+    qw/update_order keep_recommends update_refs
+      keep_build_requires keep_requires for_dists/
 );
 
 use Shipwright;
 
-=head2 options
-=cut
-
 sub options {
     (
-        'r|repository=s'        => 'repository',
-        'l|log-level=s'         => 'log_level',
-        'log-file=s'            => 'log_file',
         'update-order'          => 'update_order',
+        'update-refs'           => 'update_refs',
         'keep-recommends=s'     => 'keep_recommends',
         'keep-requires=s'       => 'keep_requires',
         'keep-build-requires=s' => 'keep_build_requires',
@@ -28,18 +23,11 @@ sub options {
     );
 }
 
-=head2 run
-=cut
-
 sub run {
     my $self = shift;
 
-    die "need repository arg" unless $self->repository();
-
     my $shipwright = Shipwright->new(
         repository => $self->repository,
-        log_level  => $self->log_level,
-        log_file   => $self->log_file,
     );
 
     if ( $self->update_order ) {
@@ -50,14 +38,20 @@ sub run {
               ( defined $self->keep_requires ? $self->keep_requires : 1 ),
 
             keep_recommends =>
-              ( defined $self->keep_recommends ? $self->keep_recommends : 1 ),
+              ( defined $self->keep_recommends ? $self->keep_recommends : 0 ),
             keep_build_requires => (
                 defined $self->keep_build_requires
                 ? $self->keep_build_requires
                 : 1
             ),
-            for_dists => [ split /,\s*/, $self->for_dists ],
+            for_dists => [ split /,\s*/, $self->for_dists || '' ],
         );
+        print "updated order with success\n";
+    }
+
+    if ( $self->update_refs ) {
+        $shipwright->backend->update_refs;
+        print "updated refs with success\n";
     }
 }
 
@@ -67,26 +61,18 @@ __END__
 
 =head1 NAME
 
-Shipwright::Script::Maintain - maintain a project
+Shipwright::Script::Maintain - Maintain a project
 
 =head1 SYNOPSIS
 
-  shipwright maintain --update-order        update the build order
+ maintain --update-order
 
- Options:
-   --repository(-r)   specify the repository of our project
-   --log-level(-l)    specify the log level
-   --update-order     update the build order
+=head1 OPTIONS
 
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+ -r [--repository] REPOSITORY : specify the repository of our project
+ -l [--log-level] LOGLEVEL    : specify the log level
+                                (info, debug, warn, error, or fatal)
+ --log-file FILENAME          : specify the log file
+ --update-order               : update the build order
+ --update-refs                : update refs( times a dist shows in all the require.yml )
 

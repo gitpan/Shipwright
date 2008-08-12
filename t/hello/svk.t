@@ -8,18 +8,16 @@ use File::Copy::Recursive qw/dircopy/;
 use File::Spec;
 use Cwd;
 
-use Test::More tests => 40;
+use Test::More tests => 41;
+use Shipwright::Test qw/has_svk create_svk_repo/;
+
 SKIP: {
-    skip "can't find svk in PATH", 40,
-      unless `whereis svk`;
+    skip "no svk and svnadmin found", Test::More->builder->expected_tests
+      unless has_svk();
 
-    my $cwd  = getcwd;
+    my $cwd = getcwd;
 
-    my $svk_root = tempdir;
-    $ENV{SVKROOT} = $svk_root;
-    my $svk_root_local = File::Spec->catfile( $svk_root, 'local' );
-    system("svnadmin create $svk_root_local");
-    system("svk depotmap -i");
+    create_svk_repo();
 
     my $repo = '//__shipwright/hello';
 
@@ -28,10 +26,11 @@ SKIP: {
         'ftp://example.com/hello.tar.gz'     => 'FTP',
         'svn:file:///home/sunnavy/svn/hello' => 'SVN',
         'svk://local/hello'                  => 'SVK',
-        'Acme::Hello'                        => 'CPAN',
-        File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ) =>
+        'cpan:Acme::Hello'                   => 'CPAN',
+        'file:'
+          . File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ) =>
           'Compressed',
-        File::Spec->catfile( 't', 'hello' ) => 'Directory',
+        'dir:' . File::Spec->catfile( 't', 'hello' ) => 'Directory',
     );
 
     for ( keys %source ) {
@@ -46,8 +45,9 @@ SKIP: {
 
     my $shipwright = Shipwright->new(
         repository => "svk:$repo",
-        source => File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
-        follow => 0,
+        source     => 'file:'
+          . File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
+        follow    => 0,
         log_level => 'FATAL',
     );
 
@@ -62,7 +62,7 @@ SKIP: {
     chomp @dirs;
     is_deeply(
         [@dirs],
-        [ 'bin/', 'dists/', 'etc/', 'scripts/', 'shipwright/', 't/' ],
+        [ 'bin/', 'dists/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 't/' ],
         'initialize works'
     );
 
@@ -144,7 +144,7 @@ SKIP: {
     chdir $cwd;
     $shipwright = Shipwright->new(
         repository => "svk:$repo",
-        source => File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
+        source => 'file:' . File::Spec->catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ),
         name   => 'howdy',
         follow => 0,
         log_level => 'FATAL',
@@ -196,4 +196,27 @@ SKIP: {
         qr/Acme-Hello.*howdy/s,
         'updated order works'
     );
+
+    # build with 0 packages
+
+    {
+        my $shipwright = Shipwright->new(
+            repository => "svk:$repo",
+            log_level  => 'FATAL',
+        );
+
+        # init
+        $shipwright->backend->initialize();
+        $shipwright->backend->export(
+            target => $shipwright->build->build_base );
+        my $install_dir = tempdir;
+        $shipwright->build->run( install_base => $install_dir );
+        ok(
+            -e File::Spec->catfile(
+                $install_dir, 'etc', 'shipwright-script-wrapper'
+            ),
+            'build with 0 packages ok'
+        );
+    }
 }
+

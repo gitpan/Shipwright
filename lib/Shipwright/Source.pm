@@ -9,20 +9,32 @@ use File::Temp qw/tempdir/;
 
 Hash::Merge::set_behavior('RIGHT_PRECEDENT');
 
-our %DEFAULT = (
-    follow            => 1,
-);
+our %DEFAULT = ( follow => 1, );
 
 $DEFAULT{directory} = tempdir( CLEANUP => 0 );
+$DEFAULT{scripts_directory} = 
+  File::Spec->catfile( $DEFAULT{directory}, '__scripts' );
 $DEFAULT{download_directory} =
-  File::Spec->catfile( $DEFAULT{directory}, 'download' );
+  File::Spec->catfile( $DEFAULT{directory}, '__download' );
 $DEFAULT{map_path} = File::Spec->catfile( $DEFAULT{directory}, 'map.yml' );
 $DEFAULT{url_path} = File::Spec->catfile( $DEFAULT{directory}, 'url.yml' );
+$DEFAULT{version_path} =
+  File::Spec->catfile( $DEFAULT{directory}, 'version.yml' );
 
-for ( qw/map_path url_path/ ) {
+for (qw/map_path url_path version_path/) {
     open my $fh, '>', $DEFAULT{$_} or die "can't write to $DEFAULT{$_}: $!";
     close $fh;
 }
+
+=head1 NAME
+
+Shipwright::Source - source part
+
+=head1 SYNOPSIS
+
+    use Shipwright::Source;
+
+=head1 METHODS
 
 =head2 new
 
@@ -32,12 +44,18 @@ sub new {
     my $class = shift;
     my %args = %{ merge( \%DEFAULT, {@_} ) };
 
-    my $type = delete $args{type} || type( $args{source} );
+    croak "need source arg" unless exists $args{source};
 
-    croak "need source option" unless $args{source};
+    for my $dir ( qw/directory download_directory scripts_directory/ ) {
+        mkdir $args{$dir} unless -e $args{$dir};
+    }
+
+    my $type = type( \$args{source} );
+
+    croak "invalid source: $args{source}" unless $type;
 
     my $module = 'Shipwright::Source::' . $type;
-    $module->require or die $@;
+    $module->require;
     return $module->new(%args);
 }
 
@@ -48,79 +66,40 @@ sub new {
 sub type {
     my $source = shift;
 
-    if ( -e $source ) {
-        if ( -d $source ) {
-            return 'Directory';
-        }
-        elsif ( -f $source && $source =~ /\.(tgz|tar\.(gz|bz2))$/ ) {
-            return 'Compressed';
-        }
-        else {
-            croak
-"only support directory and compressed file which contains only one directory";
-        }
+    # prefix that can't be omitted
+    if ( $$source =~ /^file:.*\.(tar\.gz|tgz|tar\.bz2)$/ ) {
+        $$source =~ s/^file://i;
+        return 'Compressed';
     }
-    elsif ( $source =~ m{^\s*http://} ) {
-        return 'HTTP';
-    }
-    elsif ( $source =~ m{^\s*ftp://} ) {
-        return 'FTP';
-    }
-    elsif ( $source =~ m{^\s*svn[:+]} ) {
-        return 'SVN';
-    }
-    elsif ( $source =~ m{^\s*(svk:|//)} ) {
-        return 'SVK';
-    }
-    else {
+
+    return 'Directory' if $$source =~ s/^dir(ectory)?://i;
+    return 'Shipwright' if $$source =~ s/^shipwright://i;
+
+    if ( $$source =~ s/^cpan://i ) {
+
+        # if it's not a distribution name, like
+        # 'S/SU/SUNNAVY/IP-QQWry-v0.0.15.tar.gz', convert '-' to '::'.
+        $$source =~ s/-/::/g unless $$source =~ /\.tar\.gz$/;
         return 'CPAN';
     }
+
+    # prefix that can be omitted
+    for my $type (qw/svn http ftp/) {
+        if ( $$source =~ /^$type:/i ) {
+            $$source =~ s{^$type:(?!//)}{}i;
+            return uc $type;
+        }
+    }
+
+    if ( $$source =~ m{^(//|svk:)}i ) {
+        $$source =~ s/^svk://i;
+        return 'SVK';
+    }
+
 }
 
 1;
 
 __END__
 
-=head1 NAME
-
-Shipwright::Source - source part
-
-
-=head1 SYNOPSIS
-
-    use Shipwright::Source;
-
-=head1 DESCRIPTION
-
-
 =head1 INTERFACE
-
-
-
-=head1 DEPENDENCIES
-
-
-None.
-
-
-=head1 INCOMPATIBILITIES
-
-None reported.
-
-
-=head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
-
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
-

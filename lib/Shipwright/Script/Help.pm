@@ -10,20 +10,9 @@ __END__
 
 =head1 NAME
 
-Shipwright::Script::Help - show help
+Shipwright::Script::Help - Show help
 
 =head1 SYNOPSIS
 
-  shipwright help COMMAND    show help
+ help COMMAND
 
-=head1 AUTHOR
-
-sunnavy  C<< <sunnavy@bestpractical.com> >>
-    
-
-=head1 LICENCE AND COPYRIGHT
-
-Copyright 2007 Best Practical Solutions.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
