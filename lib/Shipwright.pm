@@ -4,7 +4,7 @@ use warnings;
 use strict;
 use Carp;
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 use base qw/Class::Accessor::Fast/;
 
