@@ -68,8 +68,11 @@ sub new {
     $ENV{PERL_MM_USE_DEFAULT} = 1;
 
     require CPAN;
-    eval { require CPAN::Config; }
-      or warn("can't require CPAN::Config: $@");
+    require Module::Info;
+    if ( Module::Info->new_from_module('CPAN::Config') ) {
+        # keep original CPAN::Config info
+        require CPAN::Config;
+    }
 
     # we don't want any prereqs any more!
     $CPAN::Config->{prerequisites_policy} = 'ignore';
@@ -315,7 +318,7 @@ sub _wrapper {
                 $type = 'perl';
             }
             elsif (
-                $shebang =~ m{$base(?:/|\\)(?:s?bin|libexec)(?:/|\\)(\w+)
+                $shebang =~ m{$base(?:/|\\)(?:s?bin)(?:/|\\)(\w+)
                 |\benv\s+(\w+)}x
               )
             {
@@ -349,7 +352,7 @@ sub _wrapper {
     my @dirs =
       grep { -d $_ }
       map { catfile( $self->install_base, $_ ) }
-      qw/bin sbin libexec/;
+      qw/bin sbin/;
     find( $sub, @dirs ) if @dirs;
 }
 
