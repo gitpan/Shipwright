@@ -6,6 +6,8 @@ use Carp;
 use File::Spec::Functions qw/catfile catdir/;
 
 use base qw/Shipwright::Source::Base/;
+use Archive::Extract;
+use File::Temp qw/tempdir/;
 
 =head2 run
 
@@ -14,7 +16,7 @@ use base qw/Shipwright::Source::Base/;
 sub run {
     my $self = shift;
 
-    $self->name( $self->just_name( $self->path ) ) unless $self->name;
+    $self->name( $self->just_name( $self->path ) )       unless $self->name;
     $self->version( $self->just_version( $self->path ) ) unless $self->version;
     $self->log->info( 'run source ' . $self->name . ': ' . $self->source );
 
@@ -23,9 +25,10 @@ sub run {
     $self->_update_url( $self->name, 'file:' . $self->source )
       unless $self->{_no_update_url};
 
-    my $newer = $self->_cmd; # if we really get something new
+    my $newer = $self->_cmd;    # if we really get something new
 
     my $ret = $self->SUPER::run(@_);
+
     # follow only if --follow and we really added new stuff.
     $self->_follow( catfile( $self->directory, $self->name ) )
       if $self->follow && $newer;
@@ -40,55 +43,49 @@ the decompressed source path
 
 sub path {
     my $self   = shift;
-    my $source = $self->source;
-    my ($out) = Shipwright::Util->run( [ 'tar', '-t', '-f', $source ] );
-    my $sep = $/;
-    my @contents = split /$sep/, $out;
-    my %path;
 
-    for (@contents) {
-        $path{$1} = 1 if m{^(.+?)/};
+    # we memoize path info so we don't need to extract on each call.
+    return $self->{_path} if $self->{_path};
+
+    my $source = $self->source;
+    my $ae = Archive::Extract->new( archive => $source );
+    # this's to check if $source is valid, aka. it only contains one directory.
+    my $tmp_dir = tempdir( 'shipwright_tmp_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+    $ae->extract( to => $tmp_dir );
+    my $files = $ae->files;
+
+    my $base_dir = $files->[0];
+
+    if ( @$files != grep { /^\Q$base_dir\E/ } @$files ) {
+        croak 'only support compressed file which contains only one directory';
     }
 
-    my @paths = keys %path;
-    croak 'only support compressed file which contains only one directory'
-      unless @paths == 1;
-    return $paths[0];
+    $base_dir =~ s![/\\]$!!; # trim the last / or \\ if possible
+
+    $self->{_path} = $base_dir;
+
+    return $base_dir;
 }
 
 sub _cmd {
     my $self = shift;
     my $arg;
 
-    if ( $self->source =~ /\.(tar\.|t)gz$/ ) {
-        $arg = 'xfz';
-    }
-    elsif ( $self->source =~ /\.tar\.bz2$/ ) {
-        $arg = 'xfj';
-    }
-    else {
-        croak "I've no idea what the cmd is";
-    }
-
-
     my ( $from, $to );
     $from = catfile( $self->directory, $self->path );
-    $to = catfile( $self->directory, $self->name );
+    $to   = catfile( $self->directory, $self->name );
 
-# if it already exists, assuming we have processed it already, don't do it
-# again
-    return if -e $to; 
+    # if it already exists, assuming we have processed it already, don't do it
+    # again
+    return if -e $to;
+
+    my $ae = Archive::Extract->new( archive => $self->source );
 
     my @cmds;
-    push @cmds, [ 'tar', $arg, $self->source, '-C', $self->directory ];
-    
+    push @cmds, sub { $ae->extract( to => $self->directory ) };
+
     if ( $from ne $to ) {
-        push @cmds,
-          [
-            'mv',
-            $from,
-            $to,
-          ];
+        push @cmds, [ 'mv', $from, $to ];
     }
 
     return @cmds;

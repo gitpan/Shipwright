@@ -9,7 +9,7 @@ use File::Temp qw/tempdir/;
 use File::Copy qw/copy/;
 use File::Path;
 use File::Copy::Recursive qw/dircopy/;
-use List::MoreUtils qw/uniq/;
+use List::MoreUtils qw/uniq firstidx/;
 
 our %REQUIRE_OPTIONS = ( import => [qw/source/] );
 
@@ -67,7 +67,7 @@ sub initialize {
     require Module::Info;
     copy( Module::Info->new_from_module('YAML::Tiny')->file, $yaml_tiny_path )
       or die "copy YAML/Tiny.pm failed: $!";
-    
+
     # share_root can't keep empty dirs, we have to create them manually
     for (qw/dists scripts t/) {
         mkdir catfile( $dir, $_ );
@@ -109,7 +109,7 @@ sub import {
                 );
             }
             else {
-                $self->delete( path =>  "/scripts/$name" ) if $args{delete};
+                $self->delete( path => "/scripts/$name" ) if $args{delete};
 
                 $self->log->info(
                     "import $args{source}'s scripts to " . $self->repository );
@@ -127,7 +127,7 @@ sub import {
                 );
             }
             else {
-                $self->delete( path =>  "/dists/$name" ) if $args{delete};
+                $self->delete( path => "/dists/$name" ) if $args{delete};
                 $self->log->info(
                     "import $args{source} to " . $self->repository );
                 $self->_add_to_order($name);
@@ -186,7 +186,6 @@ sub commit {
     Shipwright::Util->run( $self->_cmd( commit => @_ ), 1 );
 }
 
-
 sub _add_to_order {
     my $self = shift;
     my $name = shift;
@@ -222,7 +221,15 @@ sub update_order {
     my $require = {};
 
     for (@dists) {
-        $self->_fill_deps( %args, require => $require, name => $_ );
+
+        # bloody hack, cpan-Module-Build have recommends that will
+        # cause circular deps
+        if ( $_ eq 'cpan-Module-Build' ) {
+            $require->{'cpan-Module-Build'} = [];
+        }
+        else {
+            $self->_fill_deps( %args, require => $require, name => $_ );
+        }
     }
 
     require Algorithm::Dependency::Ordered;
@@ -234,7 +241,61 @@ sub update_order {
       or die $@;
     my $order = $dep->schedule_all();
 
+    $order = $self->fiddle_order($order);
+
     $self->order($order);
+}
+
+=item fiddle_order
+
+fiddle the order a bit
+put cpan-ExtUtils-MakeMaker and cpan-Module-Build to the head of
+cpan dists.
+also put cpan-Module-Build's recommends right after it,
+since we omitted them in the $require->{'cpan-Module-Build'}
+
+if not passed order, will use the one in shipwright/order.yml.
+return fiddled order.
+
+note, this sub won't update shipwright/order.yml, you need to do it yourself.
+
+=cut
+
+sub fiddle_order {
+    my $self       = shift;
+    my $orig_order = shift;
+
+    my $order;
+    if ($orig_order) {
+
+        # don't change the argument
+        $order = [@$orig_order];
+    }
+    else {
+        $order = $self->order;
+    }
+
+    for my $maker ( 'cpan-Module-Build', 'cpan-ExtUtils-MakeMaker' ) {
+        if ( grep { $_ eq $maker } @$order ) {
+            @$order = grep { $_ ne $maker } @$order;
+            my $first_cpan_index = firstidx { /^cpan-/ } @$order;
+            splice @$order, $first_cpan_index, 0, $maker;
+
+            if ( $maker eq 'cpan-Module-Build' ) {
+
+                # cpan-Regexp-Common is the dep of cpan-Pod-Readme
+                my @maker_recommends = (
+                    'cpan-Regexp-Common', 'cpan-Pod-Readme',
+                    'cpan-version',       'cpan-ExtUtils-CBuilder',
+                    'cpan-Archive-Tar',   'cpan-ExtUtils-ParseXS'
+                );
+                my %maker_recommends = map { $_ => 1 } @maker_recommends;
+                @$order = grep { $maker_recommends{$_} ? 0 : 1 } @$order;
+                splice @$order, $first_cpan_index + 1, 0, @maker_recommends;
+            }
+        }
+    }
+    return $order;
 }
 
 sub _fill_deps {
@@ -247,24 +308,24 @@ sub _fill_deps {
     my $out = Shipwright::Util->run(
         $self->_cmd( 'cat', path => "/scripts/$name/require.yml" ), 1 );
 
-    my $req = Shipwright::Util::Load( $out ) || {};
+    my $req = Shipwright::Util::Load($out) || {};
 
     if ( $req->{requires} ) {
         for (qw/requires recommends build_requires/) {
             push @{ $require->{$name} }, keys %{ $req->{$_} }
               if $args{"keep_$_"};
         }
-        @{ $require->{$name} } = uniq @{ $require->{$name} };
     }
     else {
 
         #for back compatbility
         push @{ $require->{$name} }, keys %$req;
     }
+    @{ $require->{$name} } = uniq @{ $require->{$name} };
 
     for my $dep ( @{ $require->{$name} } ) {
         next if $require->{$dep};
-        $self->_fill_deps( %args, name => $dep, require => $require );
+        $self->_fill_deps( %args, name => $dep );
     }
 }
 
@@ -319,7 +380,7 @@ Get or set the sources map.
 sub source {
     my $self   = shift;
     my $source = shift;
-    my $path = '/shipwright/source.yml';
+    my $path   = '/shipwright/source.yml';
     return $self->_yml( $path, $source );
 }
 
@@ -373,7 +434,7 @@ Get or set refs
 
 sub refs {
     my $self = shift;
-    my $refs  = shift;
+    my $refs = shift;
     my $path = '/shipwright/refs.yml';
 
     return $self->_yml( $path, $refs );
@@ -474,8 +535,7 @@ sub requires {
     my %args = @_;
     my $name = $args{name};
 
-    return $self->_yml(
-        catfile( 'scripts', $name, 'require.yml' ) );
+    return $self->_yml( catfile( 'scripts', $name, 'require.yml' ) );
 }
 
 =item check_repository
@@ -514,8 +574,7 @@ sub update {
     croak "need path option" unless $args{path};
 
     croak "$args{path} seems not shipwright's own file"
-      unless -e catfile( Shipwright::Util->share_root,
-        $args{path} );
+      unless -e catfile( Shipwright::Util->share_root, $args{path} );
 
     return $self->_update_file( $args{path},
         catfile( Shipwright::Util->share_root, $args{path} ) );
@@ -557,11 +616,11 @@ sub trim {
         @names_to_trim = $args{name};
     }
 
-    my $order = $self->order;
-    my $map = $self->map;
+    my $order   = $self->order;
+    my $map     = $self->map;
     my $version = $self->version || {};
-    my $source  = $self->source  || {};
-    my $flags   = $self->flags   || {};
+    my $source  = $self->source || {};
+    my $flags   = $self->flags || {};
 
     for my $name (@names_to_trim) {
         $self->delete( path => "/dists/$name" );
@@ -604,11 +663,12 @@ we need update this after import and trim
 =cut
 
 sub update_refs {
-    my $self = shift;
+    my $self  = shift;
     my $order = $self->order;
-    my $refs = {};
+    my $refs  = {};
 
     for my $name (@$order) {
+
         # initialize here, in case we don't have $name entry in $refs
         $refs->{$name} ||= 0;
 
@@ -619,8 +679,11 @@ sub update_refs {
 
         my @deps;
         if ( $req->{requires} ) {
-            @deps = ( keys %{ $req->{requires} }, keys %{ $req->{recommends} },
-              keys %{ $req->{build_requires} } );
+            @deps = (
+                keys %{ $req->{requires} },
+                keys %{ $req->{recommends} },
+                keys %{ $req->{build_requires} }
+            );
         }
         else {
 
@@ -635,12 +698,10 @@ sub update_refs {
         }
     }
 
-    $self->refs( $refs );
+    $self->refs($refs);
 }
 
-
 *_cmd = *_update_file = *_subclass_method;
-
 
 =back
 

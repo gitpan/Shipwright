@@ -12,9 +12,9 @@ use Cwd qw/getcwd/;
 
 use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
-    qw/source directory scripts_directory download_directory follow 
-    min_perl_version map_path skip map keep_recommends keep_build_requires 
-    name log url_path version_path version/
+    qw/source directory scripts_directory download_directory follow
+      min_perl_version map_path skip map keep_recommends keep_build_requires
+      name log url_path version_path version/
 );
 
 =head1 NAME
@@ -45,7 +45,12 @@ sub run {
     my $self = shift;
     my %args = @_;
     for ( $self->_cmd ) {
-        Shipwright::Util->run($_);
+        if ( ref $_ eq 'CODE' ) {
+            $_->();
+        }
+        else {
+            Shipwright::Util->run($_);
+        }
     }
     $self->_copy( %{ $args{copy} } ) if $args{copy};
 }
@@ -107,8 +112,9 @@ sub _follow {
               or die "can't read Makefile.PL: $!";
 
             if ( $makefile =~ /inc::Module::Install/ ) {
-# PREREQ_PM in Makefile is not good enough for inc::Module::Install, which
-# will omit features(..). we'll put deps in features(...) into recommends part
+
+  # PREREQ_PM in Makefile is not good enough for inc::Module::Install, which
+  # will omit features(..). we'll put deps in features(...) into recommends part
 
                 $makefile =~ s/^\s*requires(?!\w)/shipwright_requires/mg;
                 $makefile =~
@@ -117,13 +123,21 @@ sub _follow {
                 my $shipwright_makefile = <<'EOF';
 my $shipwright_req = {};
 
+sub _shipwright_requires {
+    my $type = shift;
+    my %req  = @_;
+    for my $name ( keys %req ) {
+        $shipwright_req->{$type}{$name} = $req{$name};
+    }
+}
+
 sub shipwright_requires {
-    $shipwright_req->{requires}{$_[0]} = $_[1] || 0;
+    _shipwright_requires( 'requires', @_ == 1 ? ( @_, 0 ) : @_ );
     goto &requires;
 }
 
 sub shipwright_build_requires {
-    $shipwright_req->{build_requires}{$_[0]} = $_[1] || 0;
+    _shipwright_requires( 'build_requires', @_ == 1 ? ( @_, 0 ) : @_ );
     goto &build_requires;
 }
 
@@ -184,13 +198,12 @@ EOF
                 write_file( 'shipwright_makefile.pl', $shipwright_makefile );
 
                 Shipwright::Util->run( [ $^X, 'shipwright_makefile.pl' ] );
-                my $prereqs =
-                  read_file( catfile('shipwright_prereqs') )
+                my $prereqs = read_file( catfile('shipwright_prereqs') )
                   or die "can't read prereqs: $!";
                 eval $prereqs or die "eval error: $@";    ## no critic
 
-                Shipwright::Util->run( [ 'rm',   'shipwright_makefile.pl' ] );
-                Shipwright::Util->run( [ 'rm',   'shipwright_prereqs' ] );
+                Shipwright::Util->run( [ 'rm', 'shipwright_makefile.pl' ] );
+                Shipwright::Util->run( [ 'rm', 'shipwright_prereqs' ] );
             }
             else {
 
@@ -206,7 +219,7 @@ EOF
                 for ( keys %$require ) {
                     $require->{requires}{$_} = delete $require->{$_};
                 }
-                
+
                 if (   $makefile =~ /ExtUtils::/
                     && $self->name ne 'cpan-ExtUtils-MakeMaker' )
                 {
@@ -268,10 +281,12 @@ EOF
                 my $name = $module;
 
                 if ( $self->_is_skipped($module) ) {
-                    unless ( defined $map->{$module} || defined $url->{$module} ) {
+                    unless ( defined $map->{$module}
+                        || defined $url->{$module} )
+                    {
 
-                # not in the map, meaning it's not been imported before,
-                # so it's safe to erase it
+                        # not in the map, meaning it's not been imported before,
+                        # so it's safe to erase it
                         delete $require->{$type}{$module};
                         next;
                     }
@@ -310,6 +325,7 @@ EOF
                                 source  => $require->{$type}{$module}{source},
                                 name    => $name,
                                 version => undef,
+                                _path   => undef,
                             );
                         }
                         else {
@@ -318,6 +334,7 @@ EOF
                                 source  => "cpan:$module",
                                 version => undef,
                                 name => '',   # cpan name is automaticaly fixed.
+                                _path   => undef,
                             );
                         }
                         $s->run();
@@ -435,7 +452,7 @@ sub just_name {
     my $self = shift;
     my $name = shift;
 
-    $name =~ s/tar\.bz2$/tar.gz/;  # CPAN::DistnameInfo doesn't like bz2
+    $name =~ s/tar\.bz2$/tar.gz/;    # CPAN::DistnameInfo doesn't like bz2
 
     $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz)$/;
 
@@ -474,7 +491,6 @@ sub is_compressed {
     return 1 if $self->source =~ m{.*/.+\.(tar.(gz|bz2)|tgz)$};
     return;
 }
-
 
 1;
 
