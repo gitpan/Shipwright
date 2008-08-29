@@ -28,7 +28,6 @@ requires:
   Class::Accessor::Fast: 0
   File::Copy: 0
   File::Copy::Recursive: 0
-  File::ShareDir: 0
   File::Slurp: 0
   File::Spec: 0
   File::Temp: 0
@@ -46,4 +45,4 @@ requires:
   version: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 1.13_14
+version: 1.14
