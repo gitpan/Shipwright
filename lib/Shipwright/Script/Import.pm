@@ -7,7 +7,8 @@ use Carp;
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
     qw/comment no_follow build_script require_yml
-      name test_script extra_tests overwrite min_perl_version skip version/
+      name test_script extra_tests overwrite min_perl_version skip version
+      skip_recommends skip_all_recommends/
 );
 
 use Shipwright;
@@ -23,17 +24,19 @@ Hash::Merge::set_behavior('RIGHT_PRECEDENT');
 
 sub options {
     (
-        'm|comment=s'      => 'comment',
-        'name=s'           => 'name',
-        'no-follow'        => 'no_follow',
-        'build-script=s'   => 'build_script',
-        'require-yml=s'    => 'require_yml',
-        'test-script'      => 'test_script',
-        'extra-tests'      => 'extra_tests',
-        'overwrite'        => 'overwrite',
-        'min-perl-version' => 'min_perl_version',
-        'skip=s'           => 'skip',
-        'version=s'        => 'version',
+        'm|comment=s'         => 'comment',
+        'name=s'              => 'name',
+        'no-follow'           => 'no_follow',
+        'build-script=s'      => 'build_script',
+        'require-yml=s'       => 'require_yml',
+        'test-script'         => 'test_script',
+        'extra-tests'         => 'extra_tests',
+        'overwrite'           => 'overwrite',
+        'min-perl-version'    => 'min_perl_version',
+        'skip=s'              => 'skip',
+        'version=s'           => 'version',
+        'skip-recommends=s'   => 'skip_recommends',
+        'skip-all-recommends' => 'skip_all_recommends',
     );
 }
 
@@ -75,6 +78,8 @@ sub run {
     }
     else {
         $self->skip( { map { $_ => 1 } split /\s*,\s*/, $self->skip || '' } );
+        $self->skip_recommends(
+            { map { $_ => 1 } split /\s*,\s*/, $self->skip_recommends || '' } );
 
         if ( $self->name ) {
             if ( $self->name =~ /::/ ) {
@@ -91,13 +96,15 @@ sub run {
         }
 
         my $shipwright = Shipwright->new(
-            repository       => $self->repository,
-            source           => $source,
-            name             => $self->name,
-            follow           => !$self->no_follow,
-            min_perl_version => $self->min_perl_version,
-            skip             => $self->skip,
-            version          => $self->version,
+            repository          => $self->repository,
+            source              => $source,
+            name                => $self->name,
+            follow              => !$self->no_follow,
+            min_perl_version    => $self->min_perl_version,
+            skip                => $self->skip,
+            version             => $self->version,
+            skip_recommends     => $self->skip_recommends,
+            skip_all_recommends => $self->skip_all_recommends,
         );
 
         unless ( $self->overwrite ) {
@@ -168,7 +175,7 @@ sub run {
         );
         $shipwright->backend->import(
             source       => $source,
-            comment      => 'import scripts for' . $source,
+            comment      => 'import scripts for ' . $source,
             build_script => $script_dir,
             overwrite    => 1,
         );
@@ -188,7 +195,7 @@ sub run {
         );
 
         my $new_order = $shipwright->backend->fiddle_order;
-        $shipwright->backend->order( $new_order );
+        $shipwright->backend->order($new_order);
     }
 
     print "imported with success\n";
@@ -271,7 +278,7 @@ sub _import_req {
                     );
                     $shipwright->backend->import(
                         source       => $s,
-                        comment      => 'import scripts for' . $s,
+                        comment      => 'import scripts for ' . $s,
                         build_script => $script_dir,
                         overwrite    => $self->overwrite,
                     );
@@ -295,34 +302,33 @@ sub _generate_build {
     if ( -f catfile( $source_dir, 'Build.PL' ) ) {
         print
 "detected Module::Build build system; generating appropriate build script\n";
-        push @commands,
-          'configure: %%PERL%% Build.PL --install_base=%%INSTALL_BASE%%';
-        push @commands, "make: ./Build";
-        push @commands, "test: ./Build test";
-        push @commands, "install: ./Build install";
-
-        # ./Build won't work because sometimes the perl path in the shebang line
-        # is just a symblic link which can't do things right
-        push @commands, "clean: %%PERL%% Build realclean";
+        @commands = (
+            'configure: %%PERL%% Build.PL --install_base=%%INSTALL_BASE%%',
+            'make: %%PERL%% Build',
+            'test: %%PERL%% Build test',
+            'install: %%PERL%% Build install',
+            'clean: %%PERL%% Build realclean',
+        );
     }
     elsif ( -f catfile( $source_dir, 'Makefile.PL' ) ) {
         print
 "detected ExtUtils::MakeMaker build system; generating appropriate build script\n";
-        push @commands,
-          'configure: %%PERL%% Makefile.PL INSTALL_BASE=%%INSTALL_BASE%%';
-        push @commands, 'make: make';
-        push @commands, 'test: make test';
-        push @commands, "install: make install";
-        push @commands, "clean: make clean";
+        @commands = (
+            'configure: %%PERL%% Makefile.PL INSTALL_BASE=%%INSTALL_BASE%%',
+            'make: %%MAKE%%',
+            'test: %%MAKE%% test',
+            'install: %%MAKE%% install',
+            'clean: %%MAKE%% clean',
+        );
     }
     elsif ( -f catfile( $source_dir, 'configure' ) ) {
         print
 "detected autoconf build system; generating appropriate build script\n";
         @commands = (
             'configure: ./configure --prefix=%%INSTALL_BASE%%',
-            'make: make',
-            'install: make install',
-            'clean: make clean'
+            'make: %%MAKE%%',
+            'install: %%MAKE%% install',
+            'clean: %%MAKE%% clean',
         );
     }
     else {
@@ -333,15 +339,15 @@ sub _generate_build {
         $self->log->warn("I have no idea how to build this distribution");
 
         # stub build file to provide the user something to go from
-        push @commands,
-          '# Edit this file to specify commands for building this dist.';
-        push @commands,
-          '# See the perldoc for Shipwright::Manual::CustomizeBuild for more';
-        push @commands, '# info.';
-        push @commands, 'make: ';
-        push @commands, 'test: ';
-        push @commands, 'install: ';
-        push @commands, 'clean: ';
+        @commands = (
+            '# Edit this file to specify commands for building this dist.',
+            '# See the perldoc for Shipwright::Manual::CustomizeBuild for more',
+            '# info.',
+            'make: ',
+            'test: ',
+            'install: ',
+            'clean: ',
+        );
     }
 
     open my $fh, '>', catfile( $script_dir, 'build' ) or confess $@;
@@ -391,6 +397,11 @@ Shipwright::Script::Import - import a source and its dependencies
  --overwrite                    : import dependency dists anyway even if they
                                   are already in the repository
  --version                      : specify the source's version
+
+ --skip-recommends              : specify a list of modules/dist names of
+                                  which recommends we don't want to import
+
+ --skip-all-recommends          : skip all the recommends to import
 
 =head1 DESCRIPTION
 

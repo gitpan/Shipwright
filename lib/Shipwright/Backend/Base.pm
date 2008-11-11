@@ -68,6 +68,15 @@ sub initialize {
     copy( Module::Info->new_from_module('YAML::Tiny')->file, $yaml_tiny_path )
       or confess "copy YAML/Tiny.pm failed: $!";
 
+    # set proper permissions for yml under /shipwright/
+    my $sw_dir = catdir( $dir, 'shipwright' );
+    my $sw_dh;
+    opendir $sw_dh, $sw_dir or die "can't opendir $sw_dir: $!";
+    for my $yml ( grep { /.yml$/ } readdir $sw_dh ) {
+        chmod 0644, catfile( $dir, 'shipwright', $yml ); ## no critic
+    }
+    closedir $sw_dh;
+
     # share_root can't keep empty dirs, we have to create them manually
     for (qw/dists scripts t/) {
         mkdir catdir( $dir, $_ );
@@ -284,12 +293,17 @@ sub fiddle_order {
 
             if ( $maker eq 'cpan-Module-Build' ) {
 
+                my @maker_recommends; 
                 # cpan-Regexp-Common is the dep of cpan-Pod-Readme
-                my @maker_recommends = (
+                for my $r (
                     'cpan-Regexp-Common', 'cpan-Pod-Readme',
                     'cpan-version',       'cpan-ExtUtils-CBuilder',
-                    'cpan-Archive-Tar',   'cpan-ExtUtils-ParseXS'
-                );
+                    'cpan-Archive-Tar',   'cpan-ExtUtils-ParseXS',
+                  )
+                {
+                    push @maker_recommends, $r if grep { $r eq $_ } @$order;
+                }
+
                 my %maker_recommends = map { $_ => 1 } @maker_recommends;
                 @$order = grep { $maker_recommends{$_} ? 0 : 1 } @$order;
                 splice @$order, $first_cpan_index + 1, 0, @maker_recommends;
