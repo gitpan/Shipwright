@@ -13,7 +13,7 @@ use CPAN::DistnameInfo;
 
 use base qw/Shipwright::Source::Base/;
 
-my $cpan_dir = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+my $cpan_dir = tempdir( 'shipwright_cpan_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
 unshift @INC, $cpan_dir;
 
 =head1 NAME
@@ -30,31 +30,31 @@ sub new {
     my $class = shift;
     my $self  = $class->SUPER::new(@_);
 
-#    require Module::Info;
-#    if ( Module::Info->new_from_module('CPAN::Config') ) {
-#
-#        # keep original CPAN::Config info
-#        require CPAN::Config;
-#    }
-#
-#    mkdir catdir( $cpan_dir, 'CPAN' );
-#    my $config_file = catfile( $cpan_dir, 'CPAN', 'MyConfig.pm' );
-#
-#    unless ( -f $config_file ) {
-#
-#        # hack $CPAN::Config, mostly to make cpan stuff temporary
-#        $CPAN::Config->{cpan_home}         = catdir($cpan_dir);
-#        $CPAN::Config->{build_dir}         = catdir( $cpan_dir, 'build' );
-#        $CPAN::Config->{histfile}          = catfile( $cpan_dir, 'histfile' );
-#        $CPAN::Config->{keep_source_where} = catdir( $cpan_dir, 'sources' );
-#        $CPAN::Config->{prefs_dir}         = catdir( $cpan_dir, 'prefs' );
-#        $CPAN::Config->{prerequisites_policy} = 'follow';
-#        $CPAN::Config->{urllist}              = [];
-#        write_file( $config_file,
-#            Data::Dumper->Dump( [$CPAN::Config], ['$CPAN::Config'] ) );
-#
-#    }
-#    require CPAN::MyConfig;
+    require Module::Info;
+    if ( Module::Info->new_from_module('CPAN::Config') ) {
+
+        # keep original CPAN::Config info
+        require CPAN::Config;
+    }
+
+    mkdir catdir( $cpan_dir, 'CPAN' );
+    my $config_file = catfile( $cpan_dir, 'CPAN', 'MyConfig.pm' );
+
+    unless ( -f $config_file ) {
+
+        # hack $CPAN::Config, mostly to make cpan stuff temporary
+        $CPAN::Config->{cpan_home}         = catdir($cpan_dir);
+        $CPAN::Config->{build_dir}         = catdir( $cpan_dir, 'build' );
+        $CPAN::Config->{histfile}          = catfile( $cpan_dir, 'histfile' );
+        $CPAN::Config->{keep_source_where} = catdir( $cpan_dir, 'sources' );
+        $CPAN::Config->{prefs_dir}         = catdir( $cpan_dir, 'prefs' );
+        $CPAN::Config->{prerequisites_policy} = 'follow';
+        $CPAN::Config->{urllist}              = [];
+        write_file( $config_file,
+            Data::Dumper->Dump( [$CPAN::Config], ['$CPAN::Config'] ) );
+
+    }
+    require CPAN::MyConfig;
     return $self;
 }
 
