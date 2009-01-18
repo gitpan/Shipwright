@@ -2,8 +2,8 @@ package Shipwright::Script;
 use strict;
 use warnings;
 use App::CLI;
-use base qw/App::CLI Class::Accessor::Fast/;
 use Carp;
+use base qw/App::CLI Class::Accessor::Fast/;
 
 __PACKAGE__->mk_accessors(qw/repository log_file log_level/);
 
@@ -11,7 +11,13 @@ __PACKAGE__->mk_accessors(qw/repository log_file log_level/);
 =cut
 
 sub alias {
-    return ( ls => 'list', 'del' => 'delete', up => 'update' );
+    return (
+        ls         => 'list',
+        del        => 'delete',
+        up         => 'update',
+        init       => 'create',
+        initialize => 'create',
+    );
 }
 
 =head2 global_options
@@ -83,7 +89,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007 Best Practical Solutions.
+Copyright 2007-2009 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

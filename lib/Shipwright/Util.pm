@@ -64,13 +64,18 @@ sub run {
     Shipwright::Util->select('stdout');
 
     $log->info("run output:\n$out") if $out;
-    $log->warn("run err:\n$err")    if $err;
+    $log->error("run err:\n$err")   if $err;
 
     if ($?) {
         $log->error(
             'failed to run ' . join( ' ', @$cmd ) . " with exit number $?" );
-
-        confess "something wrong when execute @$cmd: $?" unless $ignore_failure;
+        unless ($ignore_failure) {
+            confess <<"EOF";
+something wrong when execute @$cmd: $?
+the output is: $out
+the error is: $err
+EOF
+        }
     }
 
     return wantarray ? ( $out, $err ) : $out;
@@ -189,7 +194,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007 Best Practical Solutions.
+Copyright 2007-2009 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

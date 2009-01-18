@@ -17,6 +17,12 @@ file system>. e.g.
     svk:/test/foo
     fs:/tmp/foo
 
+Note: since we need C<svk>/C<svn>/C<svnadmin> cmds in in backends, sources or 
+other places, we can tell shipwright the location of C<svk>/C<svn> cmds by 
+setting ENV C<SHIPWRIGHT_SVK> or C<SHIPWRIGHT_SVN>.
+C<svnadmin> is assumed in the same directory of svn. 
+
+
 we'll use C<svn:file:///tmp/svnrepo/foo> as the repository for the rest tutorial.
 
 =head2 create
@@ -25,7 +31,7 @@ We need to create the svn repo first:
 
     $ svnadmin create /tmp/svnrepo
 
-Then we can initialize the repository of our Shipwrihgt project:
+Then we can initialize the repository of our Shipwright project:
 
     $ shipwright create -r svn:file:///tmp/svnrepo/foo
 
@@ -112,7 +118,7 @@ for (currently I<autoconf>, L<ExtUtils::MakeMaker>, L<Module::Install>, and
 L<Module::Build>), we would now need to edit F<scripts/DISTNAME/build> to tell
 Shipwright how to build that source.
 
-For our tutorial, e.g. perl 5.10, the build can't be created automitacally,
+For our tutorial, e.g. perl 5.10, the build can't be created automatically,
 so we need to edit the build file:
 
   configure: ./Configure -des -Dprefix=%%INSTALL_BASE%%
@@ -205,4 +211,13 @@ need to start a new shell or re-run their startup script.
 L<Shipwright::Manual::UsingFlags>, L<Shipwright::Manual::CustomizeBuild>,
 L<Shipwright::Manual::Glossary>
 
-=cut
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.

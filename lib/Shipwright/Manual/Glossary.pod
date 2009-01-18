@@ -12,8 +12,8 @@ dist for short, in it.
 
 =head2 repository
 
-The version control repository where you import your sources to. Currently, SVN
-and SVK are supported.
+the backend, where all stuff lives, e.g. metadata, sources, etc..
+Currently, SVN, SVK and FS(file system) are supported.
 
 =head2 vessel
 
@@ -24,3 +24,13 @@ build>.
 
 L<Shipwright::Manual::Tutorial>, L<Shipwright::Manual::UsingFlags>, L<Shipwright::Manual::CustomizeBuild>,
 
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.

@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 112;
+use Test::More tests => 106;
 
 use Shipwright;
 use Shipwright::Test;
@@ -11,37 +11,54 @@ my $sw = Shipwright::Test->shipwright_bin;
 
 Shipwright::Test->init;
 
-my $repo         = 'fs:' . create_fs_repo();
 my $install_base = catdir( tmpdir(), 'vessel_71_scripts_cmds' );
 my $build_base   = catdir( tmpdir(), 'shipwright_build_71_scripts_cmds' );
 
-start_test($repo);
+{
+
+    # fs backend
+    start_test( 'fs:' . create_fs_repo() );
+}
 
 SKIP: {
-    skip "no svn found", 39 unless has_svn();
+    skip "svn: no svn found or env SHIPWRIGHT_TEST_SVN not set", 36
+      if skip_svn();
 
     my $repo = 'svn:' . create_svn_repo() . '/hello';
 
     my $source = create_svn_repo() . '/foo';    # svn source we'll import
 
     Shipwright::Util->run(
-        [ 'svn', 'import', '-m', q{''}, 't/dists/version1', $source ] );
+        [
+            $ENV{'SHIPWRIGHT_SVN'}, 'import',
+            '-m',                   q{''},
+            't/dists/version1',     $source
+        ]
+    );
 
     my $update_cmd = [
-        'svn', 'import', '-m', q{''}, 't/dists/version2', $source . '/version2'
+        $ENV{'SHIPWRIGHT_SVN'}, 'import',
+        '-m',                   q{''},
+        't/dists/version2',     $source . '/version2'
     ];
     start_test( $repo, "svn:$source", $update_cmd );
 }
 
 SKIP: {
-    skip "no svk and svnadmin found", 39 unless has_svk();
+    skip "svk: no svk found or env SHIPWRIGHT_TEST_SVK not set", 36
+      if skip_svk();
 
     create_svk_repo();
 
     my $repo   = 'svk://__shipwright/hello';
     my $source = '//foo';
     Shipwright::Util->run(
-        [ 'svk', 'import', '-m', q{''}, 't/dists/version1', $source ] );
+        [
+            $ENV{'SHIPWRIGHT_SVK'}, 'import',
+            '-m',                   q{''},
+            't/dists/version1',     $source
+        ]
+    );
 
     start_test( $repo, "svk:$source" );
 
@@ -106,8 +123,8 @@ sub start_test {
         [
             [ 'list', ],
             qr{Acme-Hello:\s+
-        version:\s+0\.03\s+
-        from:\s+\Qfile:t/hello/Acme-Hello-0.03.tar.gz\E\s+
+        version:\s+vendor:\s+0\.03\s+
+        from:\s+vendor:\s+\Qfile:t/hello/Acme-Hello-0.03.tar.gz\E\s+
         references:\s+0\s+
             }mx,
             'list the repo'
@@ -123,8 +140,8 @@ sub start_test {
         [
             [ 'list', ],
             qr{foo:\s+
-        version:\s+0\.03\s+
-        from:\s+\Qfile:t/hello/Acme-Hello-0.03.tar.gz\E\s+
+        version:\s+vendor:\s+0\.03\s+
+        from:\s+vendor:\s+\Qfile:t/hello/Acme-Hello-0.03.tar.gz\E\s+
         references:\s+0\s+
             }mx,
             'list the repo'
@@ -174,8 +191,8 @@ sub start_test {
             [ 'ls', 'dir_configure' ],
 
             qr{dir_configure:\s+ 
-              version:\s+3\.14\s+
-              from:\s+\Qdirectory:t/dists/dir_configure\E\s+
+              version:\s+vendor:\s+3\.14\s+
+              from:\s+vendor:\s+\Qdirectory:t/dists/dir_configure\E\s+
               references:\s+0\s+
             }mx,
             'list dir_configure, --version arg works too',
@@ -194,8 +211,8 @@ sub start_test {
         [
             [ 'ls', 'tgz_build' ],
             qr{tgz_build:\s+ 
-              version:\s+2\.72\s+
-              from:\s+\Qfile:t/dists/tgz_build.tar.gz\E\s+
+              version:\s+vendor:\s+2\.72\s+
+              from:\s+vendor:\s+\Qfile:t/dists/tgz_build.tar.gz\E\s+
               references:\s+0\s+
             }mx,
             'list tgz_build, --version arg works too',
@@ -210,8 +227,8 @@ sub start_test {
         [
             [ 'ls', 'tbz_make' ],
             qr{tbz_make:\s+ 
-              version:\s+
-              from:\s+\Qfile:t/dists/tbz_make.tar.bz2\E\s+
+              version:\s+vendor:\s+
+              from:\s+vendor:\s+\Qfile:t/dists/tbz_make.tar.bz2\E\s+
               references:\s+0\s+
             }mx,
             'list tgz_make',
@@ -287,31 +304,9 @@ qr/set mandatory flags with success\s+mandatory flags of man1 is build/,
                 qr/imported with success/,
                 "imported $source",
             ],
-            [
-                [ 'list', 'foo' ],
-                $update_cmd
-                ? qr/version:\s+1\s+/
-                : qr/version:\s+55\s+/m,  # the magic number is from practice ;)
-                'list foo, version seems ok',
-            ],
             $update_cmd,    # if the source dist is svk, $update_cmd is undef
-            [
-                [ 'list', 'foo', '--with-latest-version' ],
-                $update_cmd
-                ? qr/latest_version:\s+([^1]|\d{2,})\s+/
-                : qr/latest_version:\s+(?!55)\d+\s+/,
-                'list foo, latest version seems ok',
-            ],
-
-            # update cmd
+                            # update cmd
             [ [ 'update', 'foo' ], qr/updated with success/, "updated foo", ],
-            [
-                [ 'list', 'foo' ],
-                $update_cmd
-                ? qr/version:\s+([^1]|\d{2,})\s+/
-                : qr/version:\s+(?!49)\d+\s+/,
-                'list foo, update cmd seems ok',
-            ],
           )
         : (),
     );
@@ -327,8 +322,8 @@ qr/set mandatory flags with success\s+mandatory flags of man1 is build/,
                 @$item[ 1 .. $#$item ],
             );
             if ( $cmd eq 'build' ) {
-                rmtree( $install_base );
-                rmtree( $build_base );
+                rmtree($install_base);
+                rmtree($build_base);
             }
         }
         else {

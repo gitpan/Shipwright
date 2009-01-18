@@ -2,37 +2,16 @@ use strict;
 use warnings;
 
 use Shipwright;
-use Shipwright::Test qw/has_svk create_svk_repo has_svn create_svn_repo/;
+use Shipwright::Test;
 use File::Spec::Functions qw/catfile catdir/;
 
-use Test::More tests => 6;
+use Test::More tests => 3;
 
 Shipwright::Test->init;
 
-SKIP: {
-    skip "no svk and svnadmin found", 3
-      unless has_svk();
-
-    create_svk_repo();
-    my $repo = '//__shipwright/foo';
-
+{
     my $shipwright = Shipwright->new(
-        repository => "svk:$repo",
-        log_level  => 'FATAL',
-    );
-
-    test_flags( shipwright => $shipwright, name => 'foo' );
-
-}
-
-SKIP: {
-    skip "no svn and svnadmin found", 3
-      unless has_svn();
-
-    my $repo = create_svn_repo . '/foo';
-
-    my $shipwright = Shipwright->new(
-        repository => "svn:$repo",
+        repository => 'fs:' . create_fs_repo,
         log_level  => 'FATAL',
     );
 

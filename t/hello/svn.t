@@ -8,13 +8,13 @@ use File::Copy::Recursive qw/dircopy/;
 use File::Spec::Functions qw/catfile catdir updir/;
 use Cwd qw/getcwd abs_path/;
 use Test::More tests => 17;
-use Shipwright::Test qw/has_svn create_svn_repo/;
+use Shipwright::Test;
 use File::Path qw/rmtree/;
 Shipwright::Test->init;
 
 SKIP: {
-    skip "no svn found", Test::More->builder->expected_tests
-      unless has_svn();
+    skip "svn: no svn found or env SHIPWRIGHT_TEST_SVN not set", Test::More->builder->expected_tests
+      if skip_svn();
 
     my $cwd = getcwd;
 
@@ -36,7 +36,7 @@ SKIP: {
     chomp @dirs;
     is_deeply(
         [@dirs],
-        [ 'bin/', 'dists/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 't/' ],
+        [ 'bin/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 'sources/', 't/' ],
         'initialize works'
     );
 
@@ -45,7 +45,8 @@ SKIP: {
 
     # import
     $shipwright->backend->import( name => 'hello', source => $source_dir );
-    ok( grep( {/Build\.PL/} `svn ls $repo/dists/Acme-Hello` ), 'imported ok' );
+    ok( grep( {/Build\.PL/} `svn ls $repo/sources/Acme-Hello/vendor` ),
+        'imported ok' );
 
     my $script_dir = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
     copy( catfile( 't', 'hello', 'scripts', 'build' ),       $script_dir );
@@ -55,7 +56,6 @@ SKIP: {
         name         => 'hello',
         source       => $source_dir,
         build_script => $script_dir,
-        log_level    => 'FATAL',
     );
     ok( grep( {/Build\.PL/} `svn cat $repo/scripts/Acme-Hello/build` ),
         'build script ok' );
@@ -69,10 +69,14 @@ SKIP: {
             $shipwright->build->build_base, 'etc',
             'shipwright-script-wrapper'
         ),
-        catfile( $shipwright->build->build_base, 'dists', 'Acme-Hello', ),
         catfile(
-            $shipwright->build->build_base, 'dists',
-            'Acme-Hello',                   'MANIFEST',
+            $shipwright->build->build_base, 'sources',
+            'Acme-Hello',                   'vendor',
+        ),
+        catfile(
+            $shipwright->build->build_base, 'sources',
+            'Acme-Hello',                   'vendor',
+            'MANIFEST',
         ),
         catfile(
             $shipwright->build->build_base, 'scripts',
@@ -117,8 +121,9 @@ SKIP: {
     $source_dir = $shipwright->source->run();
     like( $source_dir, qr/\bhowdy\b/, 'source name looks ok' );
     $shipwright->backend->import( name => 'hello', source => $source_dir );
-    ok( grep( {/Build\.PL/} `svn ls $repo/dists/howdy` ), 'imported ok' );
-    $script_dir = tempdir( CLEANUP => 1 );
+    ok( grep( {/Build\.PL/} `svn ls $repo/sources/howdy/vendor` ),
+        'imported ok' );
+    $script_dir = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
     copy( catfile( 't', 'hello', 'scripts', 'build' ), $script_dir );
     copy( catfile( 't', 'hello', 'scripts', 'howdy_require.yml' ),
         catfile( $script_dir, 'require.yml' ) );

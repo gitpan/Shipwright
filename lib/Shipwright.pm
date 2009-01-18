@@ -3,8 +3,7 @@ package Shipwright;
 use warnings;
 use strict;
 use Carp;
-
-our $VERSION = '1.16';
+use version; our $VERSION = qv('2.0.0');
 
 use base qw/Class::Accessor::Fast/;
 
@@ -157,7 +156,7 @@ etc/
     # utility which will be installed to tools/
     shipwright-utility
 
-dists/      # all the sources of your dists live here
+sources/      # all the sources of your dists live here
 
 scripts/    # all the build scripts and dependency hints live here
 
@@ -175,7 +174,7 @@ t/
 
 =head3 repository after import
 
-After importing, say cpan:Acme::Hello, both the dists and scripts directories
+After importing, say cpan:Acme::Hello, both the sources and scripts directories
 will have a `cpan-Acme-Hello' directory.
 
 Under scripts/cpan-Acme-Hello there are two files: 'build' and 'require.yml'.
@@ -257,6 +256,7 @@ build part:
     only_test: don't install, just test, (used for previously installed dists),
                 default is false
     flags: flags for building, default is { default => 1 }
+    branches: branches build should use
 
 =head1 SEE ALSO
 
@@ -268,7 +268,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2008 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

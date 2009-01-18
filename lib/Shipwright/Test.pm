@@ -11,7 +11,7 @@ use File::Spec::Functions qw/catfile catdir/;
 use Shipwright::Util;
 
 our @EXPORT =
-  qw/has_svk has_svn create_fs_repo create_svk_repo create_svn_repo devel_cover_enabled test_cmd/;
+  qw/has_svk has_svn skip_svk skip_svn create_fs_repo create_svk_repo create_svn_repo devel_cover_enabled test_cmd/;
 
 =head1 NAME
 
@@ -29,8 +29,11 @@ in fact, it also checks svnadmin since we need that to create repo for svk.
 =cut
 
 sub has_svk {
-    if ( can_run('svk') && can_run('svnadmin') ) {
-        my $out = Shipwright::Util->run( [ 'svk', '--version' ], 1 );
+    if (   can_run( $ENV{'SHIPWRIGHT_SVK'} )
+        && can_run( $ENV{'SHIPWRIGHT_SVN'} . 'admin' ) )
+    {
+        my $out =
+          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVK'}, '--version' ], 1 );
         if ( $out && $out =~ /version v(\d)\./i ) {
             return 1 if $1 >= 2;
         }
@@ -46,13 +49,42 @@ in fact, it also checks svnadmin since we need that to create repo.
 =cut
 
 sub has_svn {
-    if ( can_run('svn') && can_run('svnadmin') ) {
-        my $out = Shipwright::Util->run( [ 'svn', '--version' ], 1 );
+    if (   can_run( $ENV{'SHIPWRIGHT_SVN'} )
+        && can_run( $ENV{'SHIPWRIGHT_SVN'} . 'admin' ) )
+    {
+        my $out =
+          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVN'}, '--version' ], 1 );
         if ( $out && $out =~ /version 1\.(\d)/i ) {
             return 1 if $1 >= 4;
         }
     }
     return;
+}
+
+=head2 skip_svn
+
+if skip svn when test.
+skip test svn unless env SHIPWRIGHT_TEST_SVN is set to true and
+the system has svn
+
+=cut
+
+sub skip_svn {
+    return if $ENV{'SHIPWRIGHT_TEST_SVN'} && has_svn();
+    return 1;
+}
+
+=head2 skip_svk
+
+if skip svk when test.
+skip test svk unless env SHIPWRIGHT_TEST_SVK is set to true and
+the system has svk
+
+=cut
+
+sub skip_svk {
+    return if $ENV{'SHIPWRIGHT_TEST_SVK'} && has_svk();
+    return 1;
 }
 
 =head2 create_fs_repo 
@@ -73,10 +105,11 @@ return $ENV{SVKROOT}
 =cut
 
 sub create_svk_repo {
-    $ENV{SVKROOT} = tempdir( 'shipwright_test_svk_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+    $ENV{SVKROOT} =
+      tempdir( 'shipwright_test_svk_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
     my $svk_root_local = catdir( $ENV{SVKROOT}, 'local' );
-    system("svnadmin create $svk_root_local");
-    system("svk depotmap -i");
+    system("$ENV{SHIPWRIGHT_SVN}admin create $svk_root_local");
+    system("$ENV{SHIPWRIGHT_SVK} depotmap -i");
     return $ENV{SVKROOT};
 }
 
@@ -88,8 +121,10 @@ return the repo's uri, like file:///tmp/foo
 =cut
 
 sub create_svn_repo {
-    my $repo = tempdir( 'shipwright_test_svn_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
-    system("svnadmin create $repo") && confess "create repo failed: $!";
+    my $repo =
+      tempdir( 'shipwright_test_svn_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+    system("$ENV{SHIPWRIGHT_SVN}admin create $repo")
+      && confess "create repo failed: $!";
     return "file://$repo";
 }
 
@@ -102,6 +137,8 @@ init something, like log
 sub init {
     require Shipwright::Logger;
     Shipwright::Logger->new( log_level => 'FATAL' );
+    $ENV{'SHIPWRIGHT_SVK'} ||= 'svk';
+    $ENV{'SHIPWRIGHT_SVN'} ||= 'svn';
 }
 
 =head2 shipwright_bin
@@ -171,4 +208,14 @@ sub _test_cmd {
 
 __END__
 
-=head1 INTERFACE
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

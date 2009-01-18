@@ -5,7 +5,9 @@ use warnings;
 use Carp;
 
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
-__PACKAGE__->mk_accessors(qw/all follow builder utility version/);
+__PACKAGE__->mk_accessors(
+    qw/all follow builder utility version only_sources as/
+);
 
 use Shipwright;
 use File::Spec::Functions qw/catdir/;
@@ -19,19 +21,20 @@ Hash::Merge::set_behavior('RIGHT_PRECEDENT');
 
 sub options {
     (
-        'a|all'     => 'all',
-        'follow'    => 'follow',
-        'builder'   => 'builder',
-        'utility'   => 'utility',
-        'version=s' => 'version',
+        'a|all'        => 'all',
+        'follow'       => 'follow',
+        'builder'      => 'builder',
+        'utility'      => 'utility',
+        'version=s'    => 'version',
+        'only-sources' => 'only_sources',
+        'as=s'         => 'as',
     );
 }
 
-my ( $shipwright, $map, $source );
+my ( $shipwright, $map, $source, $branches );
 
 sub run {
     my $self = shift;
-    my $name = shift;
 
     $shipwright = Shipwright->new( repository => $self->repository, );
 
@@ -43,19 +46,55 @@ sub run {
 
     }
     else {
-
-        confess "need name arg\n" unless $name || $self->all;
-
         $map    = $shipwright->backend->map    || {};
         $source = $shipwright->backend->source || {};
+        $branches = $shipwright->backend->branches;
 
         if ( $self->all ) {
+            confess '--all can not be specified with --as or NAME'
+              if @_ || $self->as;
+
             my $dists = $shipwright->backend->order || [];
             for (@$dists) {
                 $self->_update($_);
             }
         }
         else {
+            my $name = shift;
+            confess "need name arg\n" unless $name;
+
+            # die if the specified branch doesn't exist
+            if ( $branches && $self->as ) {
+                confess "$name doesn't have branch "
+                  . $self->as
+                  . ". please use import cmd instead"
+                  unless grep { $_ eq $self->as } @{ $branches->{$name} || [] };
+            }
+
+            my $new_source = shift;
+            if ($new_source) {
+                system(
+                        "$0 relocate -r " 
+                      . $self->repository
+                      . (
+                        $self->log_level
+                        ? ( " --log-level " . $self->log_level )
+                        : ''
+                      )
+                      . (
+                        $self->log_file ? ( " --log-file " . $self->log_file )
+                        : ''
+                      )
+                      . (
+                        $self->as ? ( " --as " . $self->as )
+                        : ''
+                      )
+                      . " $name $new_source"
+                ) && die "relocate $name to $new_source failed: $!";
+                # renew our $source
+                $source = $shipwright->backend->source || {};
+            }
+
             my @dists;
             if ( $self->follow ) {
                 my (%checked);
@@ -81,11 +120,34 @@ sub run {
             }
 
             for (@dists) {
-                if ( $_ eq $name ) {
-                    $self->_update( $_, $self->version );
+                if ( $self->only_sources ) {
+                    if ( $_ eq $name ) {
+                        $self->_update( $_, $self->version, $self->as );
+                    }
+                    else {
+                        $self->_update($_);
+                    }
                 }
                 else {
-                    $self->_update($_);
+                    system(
+                            "$0 import -r " 
+                          . $self->repository
+                          . (
+                            $self->log_level
+                            ? ( " --log-level " . $self->log_level )
+                            : ''
+                          )
+                          . (
+                            $self->log_file
+                            ? ( " --log-file " . $self->log_file )
+                            : ''
+                          )
+                          . (
+                            $self->as ? ( " --as " . $self->as )
+                            : ''
+                          )
+                          . " --name $_"
+                    );
                 }
             }
         }
@@ -98,6 +160,7 @@ sub _update {
     my $self    = shift;
     my $name    = shift;
     my $version = shift;
+    my $as      = shift;
     if ( $source->{$name} ) {
         $shipwright->source(
             Shipwright::Source->new(
@@ -125,7 +188,7 @@ sub _update {
         }
 
         unless ( $s ) {
-            warn "can't find the source of $name, skipping";
+            warn "can't find the source name of $name, skipping";
             next;
         }
 
@@ -147,8 +210,8 @@ sub _update {
         comment   => "update $name",
         overwrite => 1,
         version   => $version->{$name},
+        as        => $as,
     );
-
 }
 
 1;
@@ -162,7 +225,7 @@ Shipwright::Script::Update - Update dist(s) and scripts
 =head1 SYNOPSIS
 
  update --all
- update NAME [--follow]
+ update NAME [NEW_SOURCE_URL] [--follow]
  update --builder
  update --utility
 
@@ -177,15 +240,17 @@ Shipwright::Script::Update - Update dist(s) and scripts
  --follow                     : update one dist with all its dependencies
  --builder                    : update bin/shipwright-builder
  --utility                    : update bin/shipwright-utility
+ --only-sources               : only update sources, no build scripts
+ --as                         : the branch name
 
 =head1 DESCRIPTION
 
 The update command updates one or multiple svk, svn, or CPAN dists in a
-Shipwright repository to the latest version. Only the source in F<dists/>
-will be updated. To update other types of sources, you must re-import the new
-version, using the same name in order to overwrite. The C<import> command will
-also re-generate files in F<scripts/> (see L<Shipwright::Import> for more
-information).
+Shipwright repository to the latest version. 
+To update other types of sources, you must re-import the new version, using the same name in order to overwrite.
+
+with --only-sources, only sources will be updated, 
+while scripts( technically, the stuff below scripts/ ) won't.
 
 The update command can also be used to update a repository's builder or utility
 script to the version shipped with the Shipwright dist on your system, by
@@ -194,3 +259,15 @@ specifying the C<--builder> or C<--utility> options.
 =head1 ALIASES
 
 up
+
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

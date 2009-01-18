@@ -26,7 +26,7 @@ This module implements a SVN repository backend for Shipwright.
 
 =item initialize
 
-Initialize a project.
+initialize a project.
 
 =cut
 
@@ -65,65 +65,81 @@ sub _cmd {
         croak "$type need option $_" unless $args{$_};
     }
 
-    my $cmd;
+    my @cmd;
 
     if ( $type eq 'checkout' ) {
-        $cmd =
-          [ 'svn', 'checkout', $self->repository . $args{path}, $args{target} ];
+        @cmd =
+          [ $ENV{'SHIPWRIGHT_SVN'}, 'checkout', $self->repository . $args{path}, $args{target} ];
     }
     elsif ( $type eq 'export' ) {
-        $cmd =
-          [ 'svn', 'export', $self->repository . $args{path}, $args{target} ];
+        @cmd =
+          [ $ENV{'SHIPWRIGHT_SVN'}, 'export', $self->repository . $args{path}, $args{target} ];
     }
     elsif ( $type eq 'import' ) {
         if ( $args{_initialize} ) {
-            $cmd = [
-                'svn',         'import',
+            @cmd = [
+                $ENV{'SHIPWRIGHT_SVN'},         'import',
                 $args{source}, $self->repository,
                 '-m',          $args{comment},
             ];
         }
         elsif ( $args{_extra_tests} ) {
-            $cmd = [
-                'svn',         'import',
+            @cmd = [
+                $ENV{'SHIPWRIGHT_SVN'},         'import',
                 $args{source}, $self->repository . '/t/extra',
                 '-m',          $args{comment},
             ];
         }
         else {
             if ( my $script_dir = $args{build_script} ) {
-                $cmd = [
-                    'svn',       'import',
+                @cmd = [
+                    $ENV{'SHIPWRIGHT_SVN'},       'import',
                     $script_dir, $self->repository . "/scripts/$args{name}/",
                     '-m',        $args{comment},
                 ];
             }
             else {
-                $cmd = [
-                    'svn',         'import',
-                    $args{source}, $self->repository . "/dists/$args{name}",
-                    '-m',          $args{comment},
-                ];
+                if ( $self->has_branch_support ) {
+                    @cmd = [
+                        $ENV{'SHIPWRIGHT_SVN'},
+                        'import',
+                        $args{source},
+                        $self->repository . "/sources/$args{name}/$args{as}",
+                        '-m',
+                        $args{comment},
+                    ];
+                }
+                else {
+                    @cmd = [
+                        $ENV{'SHIPWRIGHT_SVN'},
+                        'import',
+                        $args{source},
+                        $self->repository . "/dists/$args{name}",
+                        '-m',
+                        $args{comment},
+                    ];
+
+                }
             }
         }
     }
     elsif ( $type eq 'list' ) {
-        $cmd = [ 'svn', 'list', $self->repository . $args{path} ];
+        @cmd = [ $ENV{'SHIPWRIGHT_SVN'}, 'list', $self->repository . $args{path} ];
     }
     elsif ( $type eq 'commit' ) {
-        $cmd =
-          [ 'svn', 'commit', '-m', $args{comment}, $args{path} ];
+        @cmd =
+          [ $ENV{'SHIPWRIGHT_SVN'}, 'commit', '-m', $args{comment}, $args{path} ];
     }
     elsif ( $type eq 'delete' ) {
-        $cmd = [
-            'svn', 'delete', '-m',
+        @cmd = [
+            $ENV{'SHIPWRIGHT_SVN'}, 'delete', '-m',
             'delete ' . $args{path},
             $self->repository . $args{path},
         ];
     }
     elsif ( $type eq 'move' ) {
-        $cmd = [
-            'svn',
+        @cmd = [
+            $ENV{'SHIPWRIGHT_SVN'},
             'move',
             '-m',
             "move $args{path} to $args{new_path}",
@@ -132,16 +148,16 @@ sub _cmd {
         ];
     }
     elsif ( $type eq 'info' ) {
-        $cmd = [ 'svn', 'info', $self->repository . $args{path} ];
+        @cmd = [ $ENV{'SHIPWRIGHT_SVN'}, 'info', $self->repository . $args{path} ];
     }
     elsif ( $type eq 'cat' ) {
-        $cmd = [ 'svn', 'cat', $self->repository . $args{path} ];
+        @cmd = [ $ENV{'SHIPWRIGHT_SVN'}, 'cat', $self->repository . $args{path} ];
     }
     else {
         croak "invalid command: $type";
     }
 
-    return $cmd;
+    return @cmd;
 }
 
 sub _yml {
@@ -172,14 +188,14 @@ sub _yml {
     }
     else {
         my ($out) =
-          Shipwright::Util->run( [ 'svn', 'cat', $self->repository . $path ] );
+          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVN'}, 'cat', $self->repository . $path ] );
         return Shipwright::Util::Load($out);
     }
 }
 
 =item info
 
-A wrapper around svn's info command.
+a wrapper around svn's info command.
 
 =cut
 
@@ -202,7 +218,7 @@ sub info {
 
 =item check_repository
 
-Check if the given repository is valid.
+check if the given repository is valid.
 
 =cut
 
@@ -256,3 +272,16 @@ sub _update_file {
 =cut
 
 1;
+
+__END__
+
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.

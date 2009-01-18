@@ -13,9 +13,8 @@ use Cwd qw/getcwd/;
 use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
     qw/source directory scripts_directory download_directory follow
-      min_perl_version map_path skip skip_recommends skip_all_recommends
-      map keep_recommends keep_build_requires name log url_path version_path 
-      version/
+      min_perl_version map_path skip map skip_recommends skip_all_recommends
+      keep_build_requires name log url_path version_path branches_path version/
 );
 
 =head1 NAME
@@ -88,7 +87,8 @@ sub _follow {
 
     my $reverse_map = { reverse %$map };
     my $skip_recommends = $self->skip_recommends->{ $self->name }
-      || $self->skip_recommends->{ $reverse_map->{ $self->name } }
+      || ( $reverse_map->{ $self->name }
+        && $self->skip_recommends->{ $reverse_map->{ $self->name } } )
       || $self->skip_all_recommends;
     push @types, 'recommends' unless $skip_recommends;
 
@@ -270,7 +270,7 @@ EOF
         for my $type ( @types ) {
             for my $module ( keys %{ $require->{$type} } ) {
 
-#the name shouldn't be undefined, but it _indeed_ happens in reality sometimes
+#$module shouldn't be undefined, but it _indeed_ happens in reality sometimes
                 next unless $module;
 
                 # we don't want to require perl
@@ -427,6 +427,19 @@ sub _update_version {
     Shipwright::Util::DumpFile( $self->version_path, $map );
 }
 
+sub _update_branches {
+    my $self     = shift;
+    my $name     = shift;
+    my $branches = shift;
+
+    my $map = {};
+    if ( -e $self->version_path && !-z $self->branches_path ) {
+        $map = Shipwright::Util::LoadFile( $self->branches_path );
+    }
+    $map->{$name} = $branches;
+    Shipwright::Util::DumpFile( $self->branches_path, $map );
+}
+
 sub _is_skipped {
     my $self   = shift;
     my $module = shift;
@@ -512,4 +525,14 @@ sub is_compressed {
 
 __END__
 
-=head1 INTERFACE
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

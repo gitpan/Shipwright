@@ -7,7 +7,7 @@ use Carp;
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
     qw/comment no_follow build_script require_yml
-      name test_script extra_tests overwrite min_perl_version skip version
+      name test_script extra_tests overwrite min_perl_version skip version as
       skip_recommends skip_all_recommends/
 );
 
@@ -35,6 +35,7 @@ sub options {
         'min-perl-version'    => 'min_perl_version',
         'skip=s'              => 'skip',
         'version=s'           => 'version',
+        'as=s'                => 'as',
         'skip-recommends=s'   => 'skip_recommends',
         'skip-all-recommends' => 'skip_all_recommends',
     );
@@ -45,6 +46,8 @@ my ( %imported, $version );
 sub run {
     my $self   = shift;
     my $source = shift;
+    my $name   = shift;
+    $self->name( $name ) if $name && ! $self->name;
 
     my $shipwright = Shipwright->new( repository => $self->repository, );
 
@@ -53,13 +56,18 @@ sub run {
         # don't have source specified, use the one in repo
         my $map        = $shipwright->backend->map    || {};
         my $source_yml = $shipwright->backend->source || {};
+        my $branches   = $shipwright->backend->branches;
 
         my $r_map = { reverse %$map };
         if ( $r_map->{ $self->name } ) {
             $source = 'cpan:' . $r_map->{ $self->name };
         }
-        elsif ( $source_yml->{ $self->name } ) {
-            $source = $source_yml->{ $self->name };
+        elsif ($branches) {
+            $source = $source_yml->{ $self->name }{ $self->as
+                  || $branches->{ $self->name }[0] };
+        }
+        else {
+            $source = $source_yml->{$self->name};
         }
 
     }
@@ -67,6 +75,8 @@ sub run {
     confess "we need source arg\n" unless $source;
 
     if ( $self->extra_tests ) {
+
+        print "going to import extra_tests\n";
         $shipwright->backend->import(
             source       => $source,
             comment      => 'import extra tests',
@@ -74,6 +84,7 @@ sub run {
         );
     }
     elsif ( $self->test_script ) {
+        print "going to import test_script\n";
         $shipwright->backend->test_script( source => $source );
     }
     else {
@@ -107,6 +118,9 @@ sub run {
             skip_all_recommends => $self->skip_all_recommends,
         );
 
+        confess "cpan dists can't be branched"
+          if $shipwright->source->isa('Shipwright::Source::CPAN') && $self->as;
+
         unless ( $self->overwrite ) {
 
             # skip already imported dists
@@ -134,6 +148,7 @@ sub run {
           Shipwright::Util::LoadFile( $shipwright->source->version_path );
 
         my ($name) = $source =~ m{.*/(.*)$};
+        print "importing $name: ";
         $imported{$name}++;
 
         my $base = $self->_parent_dir($source);
@@ -145,7 +160,11 @@ sub run {
         else {
 
      # Source part doesn't have script stuff, so we need to create by ourselves.
-            $script_dir = tempdir( CLEANUP => 1 );
+            $script_dir = tempdir(
+                'shipwright_script_import_XXXXXX',
+                CLEANUP => 1,
+                TMPDIR  => 1,
+            );
 
             if ( my $script = $self->build_script ) {
                 copy( $self->build_script, catfile( $script_dir, 'build' ) );
@@ -167,12 +186,18 @@ sub run {
             }
         }
 
+        my $branches =
+          Shipwright::Util::LoadFile( $shipwright->source->branches_path );
+
         $shipwright->backend->import(
             source  => $source,
             comment => $self->comment || 'import ' . $source,
-            overwrite => 1,                   # import anyway for the main dist
+            overwrite => 1,                    # import anyway for the main dist
             version   => $version->{$name},
+            as        => $self->as,
+            branches  => $branches->{$name},
         );
+
         $shipwright->backend->import(
             source       => $source,
             comment      => 'import scripts for ' . $source,
@@ -190,9 +215,16 @@ sub run {
         my $new_url =
           Shipwright::Util::LoadFile( $shipwright->source->url_path )
           || {};
-        $shipwright->backend->source(
-            Hash::Merge::merge( $shipwright->backend->source || {}, $new_url )
-        );
+        my $source_url = delete $new_url->{$name};
+
+        if ( $name !~ /^cpan-/ ) {
+            $shipwright->backend->source(
+                Hash::Merge::merge(
+                    $shipwright->backend->source || {},
+                    { $name => { $self->as || 'vendor' => $source_url } },
+                )
+            );
+        }
 
         my $new_order = $shipwright->backend->fiddle_order;
         $shipwright->backend->order($new_order);
@@ -238,15 +270,16 @@ sub _import_req {
 
                 unless ( $imported{$dist}++ ) {
 
-                    my ($s) = grep { $_ eq $dist } @sources;
-                    unless ($s) {
+                    my ($name) = grep { $_ eq $dist } @sources;
+                    unless ($name) {
                         $self->log->warn(
                             "we don't have $dist in source which is for "
                               . $source );
                         next;
                     }
 
-                    $s = catdir( $dir, $s );
+                    print "importing $name: ";
+                    my $s = catdir( $dir, $name );
 
                     my $script_dir;
                     if ( -e catdir( $dir, '__scripts', $dist ) ) {
@@ -270,11 +303,14 @@ sub _import_req {
 
                     $self->_import_req( $s, $shipwright, $script_dir );
 
+                    my $branches = Shipwright::Util::LoadFile(
+                        $shipwright->source->branches_path );
                     $shipwright->backend->import(
                         comment   => 'deps for ' . $source,
                         source    => $s,
                         overwrite => $self->overwrite,
                         version   => $version->{$dist},
+                        branches  => $branches->{$dist},
                     );
                     $shipwright->backend->import(
                         source       => $s,
@@ -300,8 +336,7 @@ sub _generate_build {
 
     my @commands;
     if ( -f catfile( $source_dir, 'Build.PL' ) ) {
-        print
-"detected Module::Build build system; generating appropriate build script\n";
+        print "detected Module::Build build system\n";
         @commands = (
             'configure: %%PERL%% Build.PL --install_base=%%INSTALL_BASE%%',
             'make: %%PERL%% Build',
@@ -311,8 +346,7 @@ sub _generate_build {
         );
     }
     elsif ( -f catfile( $source_dir, 'Makefile.PL' ) ) {
-        print
-"detected ExtUtils::MakeMaker build system; generating appropriate build script\n";
+        print "detected ExtUtils::MakeMaker build system\n";
         @commands = (
             'configure: %%PERL%% Makefile.PL INSTALL_BASE=%%INSTALL_BASE%%',
             'make: %%MAKE%%',
@@ -322,8 +356,7 @@ sub _generate_build {
         );
     }
     elsif ( -f catfile( $source_dir, 'configure' ) ) {
-        print
-"detected autoconf build system; generating appropriate build script\n";
+        print "detected autoconf build system\n";
         @commands = (
             'configure: ./configure --prefix=%%INSTALL_BASE%%',
             'make: %%MAKE%%',
@@ -375,7 +408,7 @@ Shipwright::Script::Import - import a source and its dependencies
 
 =head1 SYNOPSIS
 
- import SOURCE
+ import SOURCE [NAME]
 
 =head1 OPTIONS
 
@@ -385,6 +418,7 @@ Shipwright::Script::Import - import a source and its dependencies
  -m [--comment] COMMENT         : specify the comment
  --name NAME                    : specify the source name (only alphanumeric
                                   characters, . and -)
+ --as                           : the branch name
  --build-script FILENAME        : specify the build script
  --require-yml FILENAME         : specify the require.yml
  --no-follow                    : don't follow the dependency chain
@@ -424,6 +458,9 @@ type and schema, just a colon.
 
 e.g. cpan:Jifty::DBI  cpan:File::Spec
 
+CAVEAT: we don't support renaming CPAN sources when importing, because it
+*really* is not a good idea and maybe hurt shipwright somewhere.
+
 =item File
 
 e.g. L<file:/home/sunnavy/foo-1.23.tar.gz>
@@ -462,3 +499,15 @@ e.g. L<svn:file:///home/public/foo-1.23>
 L<svn:http://svn.example.com/foo-1.23>
 
 =back
+
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

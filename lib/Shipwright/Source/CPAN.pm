@@ -10,6 +10,7 @@ use Data::Dumper;
 use File::Temp qw/tempdir/;
 use File::Slurp;
 use CPAN::DistnameInfo;
+use File::HomeDir;
 
 use base qw/Shipwright::Source::Base/;
 
@@ -37,19 +38,33 @@ sub new {
         require CPAN::Config;
     }
 
+    unshift @INC, catdir( File::HomeDir->my_home, '.cpan' );
+    if ( Module::Info->new_from_module('CPAN::MyConfig') ) {
+
+        # keep user's CPAN::MyConfig too
+        require CPAN::MyConfig;
+    }
+    shift @INC;
+
+
     mkdir catdir( $cpan_dir, 'CPAN' );
     my $config_file = catfile( $cpan_dir, 'CPAN', 'MyConfig.pm' );
 
     unless ( -f $config_file ) {
 
         # hack $CPAN::Config, mostly to make cpan stuff temporary
-        $CPAN::Config->{cpan_home}         = catdir($cpan_dir);
-        $CPAN::Config->{build_dir}         = catdir( $cpan_dir, 'build' );
-        $CPAN::Config->{histfile}          = catfile( $cpan_dir, 'histfile' );
+        $CPAN::Config->{cpan_home} = catdir($cpan_dir);
+        $CPAN::Config->{build_dir} = catdir( $cpan_dir, 'build' );
+        $CPAN::Config->{histfile}  = catfile( $cpan_dir, 'histfile' );
+
+        # be careful, if you use minicpan, then the source won't be copied to
+        # $CPAN::Config->{keep_source_where}
         $CPAN::Config->{keep_source_where} = catdir( $cpan_dir, 'sources' );
         $CPAN::Config->{prefs_dir}         = catdir( $cpan_dir, 'prefs' );
         $CPAN::Config->{prerequisites_policy} = 'follow';
-        $CPAN::Config->{urllist}              = [];
+        unless ( $CPAN::Config->{urllist} && @{ $CPAN::Config->{urllist} } ) {
+            $CPAN::Config->{urllist} = ['http://search.cpan.org/CPAN'];
+        }
         write_file( $config_file,
             Data::Dumper->Dump( [$CPAN::Config], ['$CPAN::Config'] ) );
 
@@ -70,8 +85,14 @@ sub run {
           Shipwright::Source::Compressed->new( %$self, _no_update_url => 1 );
         $compressed->run(@_);
     }
-    else {
-        confess 'invalid source: ' . $self->source;
+    elsif ( $self->source =~ /\S/ ) {
+        my $error = q{invalid source: can't find '} . $self->source . q{'};
+        if ( $self->version ) {
+            $error .= ' version ' . $self->version;
+        }
+       
+        $error .= ' in your CPAN mirror(s)' . " [@{$CPAN::Config->{urllist}}].";
+        confess $error;
     }
 }
 
@@ -126,7 +147,7 @@ sub _run {
                 $version = 'v' . $version;
             }
             $distribution->{ID} =~ s/$latest_version/$version/;
-            $source             =~ s/$latest_version/$version/;
+            $source =~ s/$latest_version/$version/;
         }
     }
 
@@ -136,17 +157,27 @@ sub _run {
         confess 'perl itself contains ' . $self->source . ', will not process';
     }
 
-    $distribution->get;
-
     Shipwright::Util->select('stdout');
 
     $self->name( 'cpan-' . $name );
     $self->_update_map( $self->source, 'cpan-' . $name );
 
-    $self->source(
-        catfile( $CPAN::Config->{keep_source_where}, 'authors', 'id', $source )
-    );
+    $self->source($distribution->get_file_onto_local_disk);
     return 1;
 }
 
 1;
+
+__END__
+
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

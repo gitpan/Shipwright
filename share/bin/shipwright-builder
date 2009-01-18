@@ -27,7 +27,7 @@ confess "unknown option"
     'name=s',                 'help',
     'noclean',                'only=s',
     'with=s',                 'noclean-after-install',
-    'make=s',
+    'make=s',                 'branches=s',
   );
 
 my $USAGE = <<'END'
@@ -80,6 +80,9 @@ with: don't build the dist of the name in repo, use the one specified here inste
 make: specify the path of your make command, default is 'make'.
     e.g. --make /usr/bin/make
 
+branches: specify the branch you want to build.
+    e.g. --branches Foo,trunk,Bar,2.0
+
 END
   ;
 
@@ -95,6 +98,7 @@ $args{flags} = {
 };
 
 $args{with} = { map { split /=/ } split /\s*,\s*/, $args{with} || '' };
+$args{branches} = { map { split /=/ } split /\s*,\s*/, $args{branches} || '' };
 $args{make} ||= 'make';
 
 if ( $args{only} ) {
@@ -113,8 +117,7 @@ unless ( $args{name} ) {
 }
 
 unless ( $args{'install-base'} ) {
-    my $dir =
-      tempdir( 'shipwright_XXXXXX', $args{name} . '-XXXXXX', TMPDIR => 1 );
+    my $dir = tempdir( 'vessel_' . $args{name} . '-XXXXXX', TMPDIR => 1 );
     $args{'install-base'} = catdir( $dir, $args{name} );
     print "no default install-base, will set it to $args{'install-base'}\n";
 }
@@ -136,7 +139,7 @@ $args{'install-base'} = abs_path( $args{'install-base'} );
 # YAML::Tiny objects are array based.
 my $order = ( YAML::Tiny->read( catfile( 'shipwright', 'order.yml' ) ) )->[0];
 
-my ( $flags, $ktf );
+my ( $flags, $ktf, $branches );
 
 if ( -e catfile( 'shipwright', 'flags.yml' ) ) {
     $flags = ( YAML::Tiny->read( catfile( 'shipwright', 'flags.yml' ) ) )->[0];
@@ -152,6 +155,18 @@ if ( -e catfile( 'shipwright', 'known_test_failures.yml' ) ) {
 }
 else {
     $ktf = {};
+}
+
+if ( -e catfile( 'shipwright', 'branches.yml' ) ) {
+    $branches =
+         ( YAML::Tiny->read( catfile( 'shipwright', 'branches.yml' ) ) )->[0];
+    if ($branches) {
+        for my $name ( keys %{ $args{branches} } ) {
+            die 'no branch name ' . $args{branches}->{$name} . " for $name"
+              unless grep { $_ eq $args{branches}->{$name} }
+                  @{ $branches->{$name} || [] };
+        }
+    }
 }
 
 # fill not specified but mandatory flags
@@ -199,7 +214,7 @@ else {
 sub install {
 
     # for install
-    open my $log, '>', 'build.log' or confess $!;
+    open $log, '>', 'build.log' or confess $!;
 
     # set clean flag again
     if ( $args{'noclean-after-install'} ) {
@@ -278,6 +293,7 @@ sub install {
     chmod oct 755,
       catfile( $args{'install-base'}, 'tools', 'shipwright-utility' );
 
+    mkdir 'dists' unless -e 'dists';
     for my $dist (@$order) {
         _install( $dist, $log );
         _record( $dist, $log );
@@ -294,7 +310,6 @@ sub install {
     }
 
     wrap_bin($log) unless $^O =~ /MSWin/;
-
     print "install finished, the dists are at $args{'install-base'}\n";
     print $log "install finished, the dists are at $args{'install-base'}\n";
 }
@@ -307,7 +322,16 @@ sub _install {
         chdir catdir( 'tmp_dists', $dir );
     }
     else {
-        chdir catfile( 'dists', $dir );
+        if ($branches) {
+            my $branch = $args{branches}{$dir} || $branches->{$dir}[0];
+            system( "cp -r "
+                  . catdir( 'sources', $dir, split /\//, $branch )
+                  . ' '
+                  . catdir( 'dists', $dir ) )
+              && confess
+              "cp sources/$dir/$branch to dists/$dir failed";
+        }
+        chdir catdir( 'dists', $dir );
     }
 
     my $skip_test = $args{'skip-test'} || $args{'skip-test-except-final'};
@@ -420,6 +444,7 @@ sub wrap_bin {
             }
         }
 
+        chmod oct 755, $file;
         move( $file => catdir( $args{'install-base'}, "$dir-wrapped" ) )
           or confess $!;
 
@@ -525,13 +550,17 @@ sub clean {
     open my $log, '>', 'clean.log' or confess $!;
 
     system('rm -rf tmp_dists') && confess "rm tmp_dists failed\n";
+    print $log "removed tmp_dists\n";
 
-    print $log "removed tmp_dists";
-
-    chdir $build_base;
-    for my $dist (@$order) {
-        _clean( $dist, $log );
-        chdir $build_base;
+    if ($branches) {
+        system('rm -rf dists') && confess "rm dists failed\n";
+        print $log "removed dists\n";
+    }
+    else {
+        for my $dist (@$order) {
+            _clean( $dist, $log );
+            chdir $build_base;
+        }
     }
 
     unlink '__need_clean';

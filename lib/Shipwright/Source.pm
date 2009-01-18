@@ -7,18 +7,21 @@ use UNIVERSAL::require;
 use Hash::Merge qw/merge/;
 use File::Temp qw/tempdir/;
 use File::Spec::Functions qw/catfile catdir/;
+
 Hash::Merge::set_behavior('RIGHT_PRECEDENT');
 
 our %DEFAULT = ( follow => 1, );
 
-$DEFAULT{directory} = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+$DEFAULT{directory} =
+  tempdir( 'shipwright_source_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
 $DEFAULT{scripts_directory}  = catdir( $DEFAULT{directory}, '__scripts' );
 $DEFAULT{download_directory} = catdir( $DEFAULT{directory}, '__download' );
 $DEFAULT{map_path}           = catfile( $DEFAULT{directory}, 'map.yml' );
 $DEFAULT{url_path}           = catfile( $DEFAULT{directory}, 'url.yml' );
 $DEFAULT{version_path}       = catfile( $DEFAULT{directory}, 'version.yml' );
+$DEFAULT{branches_path}      = catfile( $DEFAULT{directory}, 'branches.yml' );
 
-for (qw/map_path url_path version_path/) {
+for (qw/map_path url_path version_path branches_path/) {
     open my $fh, '>', $DEFAULT{$_} or confess "can't write to $DEFAULT{$_}: $!";
     close $fh;
 }
@@ -99,4 +102,14 @@ sub type {
 
 __END__
 
-=head1 INTERFACE
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+

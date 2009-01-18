@@ -8,7 +8,7 @@ use base qw/Class::Accessor::Fast/;
 
 __PACKAGE__->mk_accessors(
     qw/install_base perl build_base skip_test commands log
-      skip only_test force order flags name only make/
+      skip only_test force order flags name only make branches/
 );
 
 use File::Spec::Functions qw/catfile catdir splitdir/;
@@ -40,6 +40,7 @@ sub new {
 
     $self->name('vessel') unless $self->name;
     $self->skip( {} ) unless $self->skip;
+    $self->branches( {} ) unless $self->branches;
     $self->make('make') unless $self->make;
 
     unless ( $self->install_base ) {
@@ -121,7 +122,7 @@ sub run {
           Shipwright::Util::LoadFile( catfile( 'shipwright', 'order.yml' ) )
           || [];
 
-        my ( $flags, $ktf );
+        my ( $flags, $ktf, $branches );
         if ( -e catfile( 'shipwright', 'flags.yml' ) ) {
 
             $flags =
@@ -149,6 +150,12 @@ sub run {
         }
         else {
             $ktf = {};
+        }
+
+        if ( -e catfile( 'shipwright', 'branches.yml' ) ) {
+            $branches =
+              Shipwright::Util::LoadFile(
+                catfile( 'shipwright', 'branches.yml' ) );
         }
 
         # calculate the real order
@@ -182,27 +189,37 @@ sub run {
             }
         }
 
+        mkdir 'dists' unless -e 'dists';
         for my $dist (@$order) {
-            $self->_install( $dist, $ktf );
+            $self->_install( $dist, $ktf, $branches );
             $self->_record($dist);
             chdir $self->build_base;
         }
 
         $self->_wrapper() unless $^O =~ /MSWin/;
 
-        $self->log->info(
-            "install finished. the dists are at " . $self->install_base );
     }
 
     chdir $orig_cwd;
+    return 1;
 }
 
 # install one dist, the install methods are in scripts/distname/build
 
 sub _install {
-    my $self = shift;
-    my $dir  = shift;
-    my $ktf  = shift;
+    my $self     = shift;
+    my $dir      = shift;
+    my $ktf      = shift;
+    my $branches = shift;
+    my $branch = $self->branches->{$dir} || $branches->{$dir}[0] || 'vendor';
+
+    if ($branches) {
+        system( "cp -r "
+              . catdir( 'sources', $dir, split /\//, $branch )
+              . ' '
+              . catdir( 'dists', $dir ) )
+          && confess "cp sources/$dir/$branch to dists/$dir failed";
+    }
 
     chdir catdir( 'dists', $dir );
 
@@ -323,6 +340,7 @@ sub _wrapper {
             }
         }
 
+        chmod oct 755, $file;
         move( $file => catdir( $self->install_base, "$dir-wrapped" ) )
           or confess $!;
 
@@ -340,6 +358,7 @@ sub _wrapper {
             symlink catfile( '..', 'etc', 'shipwright-script-wrapper' ) => $file
               or confess $!;
         }
+        chmod oct 755, $file;
     };
 
     my @dirs =
@@ -450,7 +469,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007 Best Practical Solutions.
+Copyright 2007-2009 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

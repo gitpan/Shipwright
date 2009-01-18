@@ -26,7 +26,7 @@ This module implements an SVK repository backend for Shipwright.
 
 =item initialize
 
-Initialize a project.
+initialize a project.
 
 =cut
 
@@ -42,6 +42,20 @@ sub initialize {
     );
 }
 
+sub _svnroot {
+    my $self = shift;
+    return $self->{svnroot} if $self->{svnroot};
+    my $depotmap = Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVK'} => depotmap => '--list' ] );
+    $depotmap =~ s{\A.*?^(?=/)}{}sm;
+    while ($depotmap =~ /^(\S*)\s+(.*?)$/gm) {
+        my ($depot, $svnroot) = ($1, $2);
+        if ($self->repository =~ /^$depot(.*)/) {
+            return $self->{svnroot} = "file://$svnroot/$1";
+        }
+    }
+    croak "Can't find determine underlying SVN repository for ". $self->repository;
+}
+
 # a cmd generating factory
 sub _cmd {
     my $self = shift;
@@ -54,72 +68,98 @@ sub _cmd {
         croak "$type need option $_" unless $args{$_};
     }
 
-    my $cmd;
+    my @cmd;
 
     if ( $type eq 'checkout' ) {
         if ( $args{detach} ) {
-            $cmd = [ 'svk', 'checkout', '-d', $args{target} ];
+            @cmd = [ $ENV{'SHIPWRIGHT_SVK'}, 'checkout', '-d', $args{target} ];
         }
         else {
-            $cmd = [
-                'svk',                           'checkout',
+            @cmd = [
+                $ENV{'SHIPWRIGHT_SVK'},                           'checkout',
                 $self->repository . $args{path}, $args{target}
             ];
         }
     }
     elsif ( $type eq 'export' ) {
-        $cmd =
-          [ 'svk', 'checkout', $self->repository . $args{path}, $args{target} ];
+        @cmd = (
+            [
+                'svn',                           'export',
+                $self->_svnroot . $args{path}, $args{target}
+            ],
+        );
     }
     elsif ( $type eq 'list' ) {
-        $cmd = [ 'svk', 'list', $self->repository . $args{path} ];
+        @cmd = [ 'svn', 'list', $self->_svnroot . $args{path} ];
     }
     elsif ( $type eq 'import' ) {
         if ( $args{_initialize} ) {
-            $cmd = [
-                'svk',         'import',
+            @cmd = [
+                $ENV{'SHIPWRIGHT_SVK'},         'import',
                 $args{source}, $self->repository,
                 '-m',          $args{comment},
             ];
         }
         elsif ( $args{_extra_tests} ) {
-            $cmd = [
-                'svk',         'import',
+            @cmd = [
+                $ENV{'SHIPWRIGHT_SVK'},         'import',
                 $args{source}, $self->repository . '/t/extra',
                 '-m',          $args{comment},
             ];
         }
         else {
-            if ( my $script_dir = $args{build_script} ) {
-                $cmd = [
-                    'svk',       'import',
-                    $script_dir, $self->repository . "/scripts/$args{name}/",
-                    '-m',        $args{comment},
-                ];
+            my ( $path, $source );
+            if ( $args{build_script} ) {
+                $path   = "/scripts/$args{name}";
+                $source = $args{build_script};
             }
             else {
-                $cmd = [
-                    'svk',         'import',
-                    $args{source}, $self->repository . "/dists/$args{name}",
-                    '-m',          $args{comment},
+                $path =
+                  $self->has_branch_support
+                  ? "/sources/$args{name}/$args{as}"
+                  : "/dists/$args{name}";
+                $source = $args{source};
+            }
+
+            if ( $self->info( path => $path ) ) {
+                my $tmp_dir =
+                  tempdir( 'shipwright_backend_svk_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+                @cmd = (
+                    [ 'rm', '-rf', "$tmp_dir" ],
+                    [ $ENV{'SHIPWRIGHT_SVK'}, 'checkout', $self->repository . $path, $tmp_dir ],
+                    [ 'rm',  '-rf',      "$tmp_dir" ],
+                    [ 'cp', '-r', $source, "$tmp_dir" ],
+                    [
+                        $ENV{'SHIPWRIGHT_SVK'},      'commit',
+                        '--import', $tmp_dir,
+                        '-m',       $args{comment}
+                    ],
+                    [ $ENV{'SHIPWRIGHT_SVK'}, 'checkout', '-d', $tmp_dir ],
+                );
+            }
+            else {
+                @cmd = [
+                    $ENV{'SHIPWRIGHT_SVK'},   'import',
+                    $source, $self->repository . $path,
+                    '-m',    $args{comment},
                 ];
             }
         }
     }
     elsif ( $type eq 'commit' ) {
-        $cmd =
-          [ 'svk', 'commit', '-m', $args{comment}, $args{path} ];
+        @cmd =
+          [ $ENV{'SHIPWRIGHT_SVK'}, 'commit', '-m', $args{comment}, $args{path} ];
     }
     elsif ( $type eq 'delete' ) {
-        $cmd = [
-            'svk', 'delete', '-m',
+        @cmd = [
+            $ENV{'SHIPWRIGHT_SVK'}, 'delete', '-m',
             'delete repository',
             $self->repository . $args{path},
         ];
     }
     elsif ( $type eq 'move' ) {
-        $cmd = [
-            'svk',
+        @cmd = [
+            $ENV{'SHIPWRIGHT_SVK'},
             'move',
             '-m',
             "move $args{path} to $args{new_path}",
@@ -128,16 +168,16 @@ sub _cmd {
         ];
     }
     elsif ( $type eq 'info' ) {
-        $cmd = [ 'svk', 'info', $self->repository . $args{path} ];
+        @cmd = [ $ENV{'SHIPWRIGHT_SVK'}, 'info', $self->repository . $args{path} ];
     }
     elsif ( $type eq 'cat' ) {
-        $cmd = [ 'svk', 'cat', $self->repository . $args{path} ];
+        @cmd = [ 'svn', 'cat', $self->_svnroot . $args{path} ];
     }
     else {
         croak "invalid command: $type";
     }
 
-    return $cmd;
+    return @cmd;
 }
 
 sub _yml {
@@ -162,14 +202,14 @@ sub _yml {
     }
     else {
         my ($out) =
-          Shipwright::Util->run( [ 'svk', 'cat', $self->repository . $path ] );
+          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVK'}, 'cat', $self->repository . $path ] );
         return Shipwright::Util::Load($out);
     }
 }
 
 =item info
 
-A wrapper around svk's info command.
+a wrapper around svk's info command.
 
 =cut
 
@@ -188,7 +228,7 @@ sub info {
 
 =item check_repository
 
-Check if the given repository is valid.
+check if the given repository is valid.
 
 =cut
 
@@ -247,3 +287,16 @@ sub _update_file {
 =cut
 
 1;
+
+__END__
+
+=head1 AUTHORS
+
+sunnavy  C<< <sunnavy@bestpractical.com> >>
+
+=head1 LICENCE AND COPYRIGHT
+
+Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.

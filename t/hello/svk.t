@@ -9,40 +9,19 @@ use File::Spec::Functions qw/catfile catdir updir/;
 use File::Path qw/rmtree/;
 use Cwd qw/getcwd abs_path/;
 
-use Test::More tests => 41;
-use Shipwright::Test qw/has_svk create_svk_repo/;
+use Test::More tests => 17;
+use Shipwright::Test;
 Shipwright::Test->init;
 
 SKIP: {
-    skip "no svk and svnadmin found", Test::More->builder->expected_tests
-      unless has_svk();
+    skip "svk: no svk found or env SHIPWRIGHT_TEST_SVK not set", Test::More->builder->expected_tests
+      if skip_svk();
 
     my $cwd = getcwd;
 
     create_svk_repo();
 
     my $repo = '//__shipwright/hello';
-
-    my %source = (
-        'http://example.com/hello.tar.gz'    => 'HTTP',
-        'ftp://example.com/hello.tar.gz'     => 'FTP',
-        'svn:file:///home/sunnavy/svn/hello' => 'SVN',
-        'svk://local/hello'                  => 'SVK',
-        'cpan:Acme::Hello'                   => 'CPAN',
-        'file:'
-          . catfile( 't', 'hello', 'Acme-Hello-0.03.tar.gz' ) => 'Compressed',
-        'dir:' . catfile( 't', 'hello' ) => 'Directory',
-    );
-
-    for ( keys %source ) {
-        my $shipwright = Shipwright->new(
-            repository => "svk:$repo",
-            source     => $_,
-            log_level  => 'FATAL',
-        );
-        isa_ok( $shipwright, 'Shipwright' );
-        isa_ok( $shipwright->source, "Shipwright::Source::$source{$_}" );
-    }
 
     my $shipwright = Shipwright->new(
         repository => "svk:$repo",
@@ -51,11 +30,7 @@ SKIP: {
         log_level => 'FATAL',
         force => 1,
     );
-
-    isa_ok( $shipwright,          'Shipwright' );
     isa_ok( $shipwright->backend, 'Shipwright::Backend::SVK' );
-    isa_ok( $shipwright->source,  'Shipwright::Source::Compressed' );
-    isa_ok( $shipwright->build,   'Shipwright::Build' );
 
     # init
     $shipwright->backend->initialize();
@@ -63,27 +38,18 @@ SKIP: {
     chomp @dirs;
     is_deeply(
         [@dirs],
-        [ 'bin/', 'dists/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 't/' ],
+        [ 'bin/', 'etc/', 'inc/', 'scripts/', 'shipwright/', 'sources/', 't/' ],
         'initialize works'
     );
 
     # source
     my $source_dir = $shipwright->source->run();
-    like( $source_dir, qr/\bAcme-Hello\b/, 'source name looks ok' );
-
-    for (qw/source backend build/) {
-        isa_ok( $shipwright->$_->log, 'Log::Log4perl::Logger' );
-    }
-
-    ok( -e catfile( $source_dir, 'lib', 'Acme', 'Hello.pm' ),
-        'lib/Acme/Hello.pm exists in the source' );
-    ok( -e catfile( $source_dir, 'META.yml' ),
-        'META.yml exists in the source' );
 
     # import
 
     $shipwright->backend->import( name => 'hello', source => $source_dir );
-    ok( grep( {/Build\.PL/} `svk ls $repo/dists/Acme-Hello` ), 'imported ok' );
+    ok( grep( {/Build\.PL/} `svk ls $repo/sources/Acme-Hello/vendor` ),
+        'imported ok' );
 
     my $script_dir = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
     copy( catfile( 't', 'hello', 'scripts', 'build' ),       $script_dir );
@@ -106,10 +72,14 @@ SKIP: {
             $shipwright->build->build_base, 'etc',
             'shipwright-script-wrapper'
         ),
-        catfile( $shipwright->build->build_base, 'dists', 'Acme-Hello', ),
         catfile(
-            $shipwright->build->build_base, 'dists',
-            'Acme-Hello',                   'MANIFEST',
+            $shipwright->build->build_base, 'sources',
+            'Acme-Hello',                   'vendor',
+        ),
+        catfile(
+            $shipwright->build->build_base, 'sources',
+            'Acme-Hello',                   'vendor',
+            'MANIFEST',
         ),
         catfile(
             $shipwright->build->build_base, 'scripts',
@@ -148,8 +118,9 @@ SKIP: {
     $source_dir = $shipwright->source->run();
     like( $source_dir, qr/\bhowdy\b/, 'source name looks ok' );
     $shipwright->backend->import( name => 'hello', source => $source_dir );
-    ok( grep( {/Build\.PL/} `svk ls $repo/dists/howdy` ), 'imported ok' );
-    $script_dir = tempdir( CLEANUP => 1 );
+    ok( grep( {/Build\.PL/} `svk ls $repo/sources/howdy/vendor` ),
+        'imported ok' );
+    $script_dir = tempdir( 'shipwright_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
     copy( catfile( 't', 'hello', 'scripts', 'build' ), $script_dir );
     copy( catfile( 't', 'hello', 'scripts', 'howdy_require.yml' ),
         catfile( $script_dir, 'require.yml' ) );
@@ -191,27 +162,5 @@ SKIP: {
         'updated order works'
     );
 
-    # build with 0 packages
-
-    {
-        my $shipwright = Shipwright->new(
-            repository => "svk:$repo",
-            log_level  => 'FATAL',
-        );
-
-        # init
-        $shipwright->backend->initialize();
-        $shipwright->backend->export(
-            target => $shipwright->build->build_base );
-        $shipwright->build->run();
-        ok(
-            -e catfile(
-                $shipwright->build->install_base, 'etc',
-                'shipwright-script-wrapper'
-            ),
-            'build with 0 packages ok'
-        );
-        rmtree( abs_path(catdir( $shipwright->build->install_base, updir() )) );
-    }
 }
 

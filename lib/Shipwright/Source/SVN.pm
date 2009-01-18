@@ -50,13 +50,16 @@ sub _run {
     my $source = $self->source;
 
     my $cmd = [
-        'svn', 'export', $self->source,
+        $ENV{'SHIPWRIGHT_SVN'},
+        'export',
+        $self->source,
         catdir( $self->download_directory, $self->name ),
         $self->version ? ( '-r', $self->version ) : (),
     ];
 
     unless ( $self->version ) {
-        my ($out) = Shipwright::Util->run( [ 'svn', 'info', $source, ] );
+        my ($out) =
+          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVN'}, 'info', $source, ] );
 
         if ( $out =~ /^Revision: (\d+)/m ) {
             $self->version($1);
@@ -100,7 +103,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007 Best Practical Solutions.
+Copyright 2007-2009 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
