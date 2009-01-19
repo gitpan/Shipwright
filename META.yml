@@ -18,7 +18,9 @@ no_index:
     - t
     - docs
     - share
+    - share
     - inc
+    - t
 requires:
   Algorithm::Dependency::Ordered: 0
   Algorithm::Dependency::Source::HoA: 0
@@ -30,6 +32,7 @@ requires:
   Class::Accessor::Fast: 0
   File::Copy: 0
   File::Copy::Recursive: 0
+  File::HomeDir: 0
   File::Slurp: 0
   File::Spec: 0
   File::Temp: 0
@@ -49,4 +52,4 @@ requires:
   version: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 2.000000
+version: 2.000001
