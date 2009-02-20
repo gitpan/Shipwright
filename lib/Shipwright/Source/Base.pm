@@ -99,6 +99,14 @@ sub _follow {
         chdir catdir($path);
 
         if ( -e 'Build.PL' ) {
+            Shipwright::Util->run(
+                [
+                    $^X,               '-Mversion',
+                    '-MModule::Build', '-MShipwright::Util::CleanINC',
+                    'Build.PL'
+                ],
+                1, # don't die if this fails
+            );
             Shipwright::Util->run( [ $^X, 'Build.PL' ] );
             my $source = read_file( catfile( '_build', 'prereqs' ) )
               or confess "can't read _build/prereqs: $!";
@@ -107,15 +115,9 @@ sub _follow {
 
             $source = read_file( catfile('Build.PL') )
               or confess "can't read Build.PL: $!";
-            if (   $source =~ /Module::Build/
-                && $self->name ne 'cpan-Module-Build' )
-            {
-                unless ( defined $require->{build_requires}{'Module::Build'} ) {
-                    $require->{build_requires}{'Module::Build'} = 0;
-                }
-            }
 
-            Shipwright::Util->run( [ './Build', 'realclean' ] );
+            Shipwright::Util->run(
+                [ './Build', 'realclean', '--allow_mb_mismatch', 1 ] );
         }
         elsif ( -e 'Makefile.PL' ) {
             my $makefile = read_file('Makefile.PL')
@@ -169,7 +171,11 @@ sub shipwright_features {
 #     ],
 # );
                for ( my $j = 0; $j < @{$mods->[$i]}; $j++ ) {
-                    if ( $mods->[$i][$j+1] =~ /^[\d\.]*$/ ) {
+                    if ( ref $mods->[$i][$j] eq 'ARRAY' ) {
+                        $shipwright_req->{recommends}{$mods->[$i][$j][0]} 
+                            = $mods->[$i][$j][1] || 0;
+                    }
+                    elsif ( $mods->[$i][$j+1] =~ /^[\d\.]*$/ ) {
                         $shipwright_req->{recommends}{$mods->[$i][$j]} 
                             = $mods->[$i][$j+1] || 0;
                         $j++;
@@ -207,7 +213,17 @@ EOF
                 $shipwright_makefile .= $makefile;
                 write_file( 'shipwright_makefile.pl', $shipwright_makefile );
 
-                Shipwright::Util->run( [ $^X, 'shipwright_makefile.pl' ] );
+                Shipwright::Util->run(
+                    [
+                        $^X,
+                        '-Mversion',
+                        '-MShipwright::Util::CleanINC',
+                        'shipwright_makefile.pl'
+                    ],
+                    1, # don't die if this fails
+                );
+                Shipwright::Util->run( [ $^X, 'shipwright_makefile.pl' ] )
+                  if $?;
                 my $prereqs = read_file( catfile('shipwright_prereqs') )
                   or confess "can't read prereqs: $!";
                 eval $prereqs or confess "eval error: $@";    ## no critic
@@ -218,7 +234,21 @@ EOF
             else {
 
                 # we extract the deps from Makefile
-                Shipwright::Util->run( [ $^X, 'Makefile.PL' ] );
+                Shipwright::Util->run(
+                    [
+                        $^X,
+                        '-MShipwright::Util::CleanINC',
+                        'Makefile.PL'
+                    ],
+                    1, # don't die if this fails
+                );
+                Shipwright::Util->run(
+                    [
+                        $^X,
+                        'Makefile.PL'
+                    ]
+                ) if $?;
+
                 my ($source) = grep { /PREREQ_PM/ } read_file('Makefile');
                 if ( $source && $source =~ /({.*})/ ) {
                     my $eval .= '$require = ' . $1;
@@ -230,16 +260,6 @@ EOF
                     $require->{requires}{$_} = delete $require->{$_};
                 }
 
-                if (   $makefile =~ /ExtUtils::/
-                    && $self->name ne 'cpan-ExtUtils-MakeMaker' )
-                {
-                    unless ( $require->{requires}{'ExtUtils::MakeMaker'}
-                        && $require->{requires}{'ExtUtils::MakeMaker'} >= 6.31 )
-                    {
-                        $require->{build_requires}{'ExtUtils::MakeMaker'} =
-                          6.31;
-                    }
-                }
             }
             Shipwright::Util->run( [ 'make', 'clean' ] );
             Shipwright::Util->run( [ 'rm',   'Makefile.old' ] );
@@ -443,14 +463,28 @@ sub _update_branches {
 sub _is_skipped {
     my $self   = shift;
     my $module = shift;
+    my $skip;
 
-    if ( $self->skip && defined $self->skip->{$module} ) {
-        $self->log->warn("$module is skipped");
-        return 1;
+    if ( $self->skip ) {
+        if ( $self->skip->{$module} ) {
+            $skip = 1;
+        }
+        elsif ( grep { /-/ } keys %{ $self->skip } ) {
+
+       # so we have a dist skip, we need to resolve the $module to the dist name
+            my $source = Shipwright::Source->new( source => "cpan:$module" );
+            $source->_run;
+            my $name = $source->name;
+            my ($name_without_prefix) = $name =~ /^cpan-(.*)/;
+            $skip = 1
+              if $self->skip->{$name} || $self->skip->{$name_without_prefix};
+        }
+        if ($skip) {
+            $self->log->warn("$module is skipped");
+            return 1;
+        }
     }
-
     return;
-
 }
 
 sub _copy {

@@ -163,30 +163,12 @@ Hey, you know how to edit that file, right? ;)
 
 =head2 build
 
-There're two ways to build a Shipwright project, we can use Shipwright's
-I<build> command or use the F</bin/shipwright-builder> in the repository. 
-
-=over 4
-
-=item build cmd
-
-$ shipwright build -r svn:file:///tmp/svnrepo/foo
-
-You can tell Shipwright the dir to install to by C<--install-base> arg.
-
-Run I<shipwright help build> to see more options.
-
-=item F<./bin/shipwright-buider>
-
-F<./bin/shipwright-buider> lives in the Shipwright repository,
-so we need to I<check out> the repository to some place first,
+We need to I<check out> the repository to some place first,
 then I<chdir> there, and run:
 
 $ ./bin/shipwright-builder 
 
 Run I<./bin/shipwright-builder --help> to see more options.
-
-=back
 
 =head2 ship our vessel
 
@@ -199,8 +181,14 @@ program such as I<tar>, e.g. by running I<tar czvf our-vessel.tar.gz
 Users can use our vessel by extracting the archive to a directory and then
 adding the following command to their shell's startup script
 (e.g. for bash users, edit F</home/user/.bashrc> on most systems): I<source
-/base/path/hello/etc/shipwright-source-bash> (for bash users). A source script
-is also provided for the tcsh shell.
+/base/path/tools/etc/shipwright-source-bash> (for bash users). A source script
+is also provided for the tcsh shell. 
+
+Here is a sourcing example:
+
+  source /home/user/myapp/tools/shipwright-source-bash /home/user/myapp
+
+This example assumes the myapp vessel was extracted to /home/user/myapp.
                                     
 After sourcing this script, users will be able to run binaries and load perl
 modules from our vessel as with normal installed programs, though they will 

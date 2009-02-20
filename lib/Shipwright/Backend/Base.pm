@@ -60,7 +60,8 @@ sub initialize {
     my $dir =
       tempdir( 'shipwright_backend_base_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
 
-    dircopy( Shipwright::Util->share_root, $dir );
+    dircopy( Shipwright::Util->share_root, $dir )
+      or confess "copy share_root failed: $!";
 
     # copy YAML/Tiny.pm to inc/
     my $yaml_tiny_path = catdir( $dir, 'inc', 'YAML' );
@@ -68,6 +69,18 @@ sub initialize {
     require Module::Info;
     copy( Module::Info->new_from_module('YAML::Tiny')->file, $yaml_tiny_path )
       or confess "copy YAML/Tiny.pm failed: $!";
+
+    my $clean_inc_path = catdir( $dir, 'inc', 'Shipwright', 'Util' );
+    mkpath $clean_inc_path;
+    copy( Module::Info->new_from_module('Shipwright::Util::CleanINC')->file,
+        $clean_inc_path )
+      or confess "copy Shipwright/Util/CleanINC.pm failed: $!";
+
+
+    
+    $self->_install_module_build($dir);
+
+
 
     # set proper permissions for yml under /shipwright/
     my $sw_dir = catdir( $dir, 'shipwright' );
@@ -87,6 +100,26 @@ sub initialize {
     unlink( catfile( $dir, '.exists' ) );
 
     return $dir;
+}
+
+sub _install_module_build {
+    my $self = shift;
+    my $dir = shift;
+    my $module_build_path = catdir( $dir, 'inc', 'Module', );
+    mkpath catdir( $module_build_path, 'Build' );
+    copy( catdir( Module::Info->new_from_module('Module::Build')->file),
+            $module_build_path ) or confess "copy Module/Build.pm failed: $!";
+    dircopy(
+        catdir(
+            Module::Info->new_from_module('Module::Build')->inc_dir, 'Module',
+            'Build'
+        ),
+        catdir( $module_build_path, 'Build' )
+      )
+      or confess "copy
+        Module/Build failed: $!";
+
+
 }
 
 =item import
@@ -302,15 +335,7 @@ sub update_order {
     my $require = {};
 
     for (@dists) {
-
-        # bloody hack, cpan-Module-Build have recommends that will
-        # cause circular deps
-        if ( $_ eq 'cpan-Module-Build' ) {
-            $require->{'cpan-Module-Build'} = [];
-        }
-        else {
-            $self->_fill_deps( %args, require => $require, name => $_ );
-        }
+        $self->_fill_deps( %args, require => $require, name => $_ );
     }
 
     require Algorithm::Dependency::Ordered;
@@ -322,68 +347,46 @@ sub update_order {
       or confess $@;
     my $order = $dep->schedule_all();
 
-    $order = $self->fiddle_order($order);
-
     $self->order($order);
 }
 
-=item fiddle_order
+=item graph_deps
 
-fiddle the order a bit
-put cpan-ExtUtils-MakeMaker and cpan-Module-Build to the head of
-cpan dists.
-also put cpan-Module-Build's recommends right after it,
-since we omitted them in the $require->{'cpan-Module-Build'}
-
-if not passed order, will use the one in shipwright/order.yml.
-return fiddled order.
-
-note, this sub won't update shipwright/order.yml, you need to do it yourself.
+Output a dependency graph in graphviz format to stdout
 
 =cut
 
-sub fiddle_order {
-    my $self       = shift;
-    my $orig_order = shift;
+sub graph_deps {
+    my $self = shift;
+    my %args = @_;
 
-    my $order;
-    if ($orig_order) {
+    $self->log->info( "Outputting a graphviz order for " . $self->repository );
 
-        # don't change the argument
-        $order = [@$orig_order];
-    }
-    else {
-        $order = $self->order;
+    my @dists = @{ $args{for_dists} || [] };
+    unless (@dists) {
+        @dists = $self->dists;
     }
 
-    for my $maker ( 'cpan-Module-Build', 'cpan-ExtUtils-MakeMaker' ) {
-        if ( grep { $_ eq $maker } @$order ) {
-            @$order = grep { $_ ne $maker } @$order;
-            my $first_cpan_index = firstidx { /^cpan-/ } @$order;
-            $first_cpan_index = scalar @$order if $first_cpan_index == -1;
-            splice @$order, $first_cpan_index, 0, $maker;
+    s{/$}{} for @dists;
 
-            if ( $maker eq 'cpan-Module-Build' ) {
+    my $require = {};
 
-                my @maker_recommends;
+    for my $distname (@dists) {
+        $self->_fill_deps( %args, require => $require, name => $distname );
+    }
 
-                # cpan-Regexp-Common is the dep of cpan-Pod-Readme
-                for my $r (
-                    'cpan-Regexp-Common', 'cpan-Pod-Readme',
-                    'cpan-version',       'cpan-ExtUtils-CBuilder',
-                    'cpan-Archive-Tar',   'cpan-ExtUtils-ParseXS',
-                  )
-                {
-                    push @maker_recommends, $r if grep { $r eq $_ } @$order;
-                }
+    print 'digraph g {
+        graph [ overlap = scale, rankdir= LR ];
+        node [ fontsize = "18", shape = record, fontsize = 18 ];
+    ';
 
-                my %maker_recommends = map { $_ => 1 } @maker_recommends;
-                @$order = grep { $maker_recommends{$_} ? 0 : 1 } @$order;
-                splice @$order, $first_cpan_index + 1, 0, @maker_recommends;
-            }
+    for my $dist (@dists) {
+        print qq{ "$dist" [shape = record, fontsize = 18, label = "$dist" ];\n};
+        for my $dep ( @{ $require->{$dist} } ) {
+            print qq{"$dist" -> "$dep";\n};
         }
     }
-    return $order;
+    print "\n};\n";
 }
 
 sub _fill_deps {
@@ -401,7 +404,7 @@ sub _fill_deps {
     if ( $req->{requires} ) {
         for (qw/requires recommends build_requires/) {
             push @{ $require->{$name} }, keys %{ $req->{$_} }
-              if $args{"keep_$_"};
+              unless $args{"skip_$_"};
         }
     }
     else {

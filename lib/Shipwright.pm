@@ -3,7 +3,7 @@ package Shipwright;
 use warnings;
 use strict;
 use Carp;
-use version; our $VERSION = qv('2.0.1');
+use version; our $VERSION = qv('2.1.0');
 
 use base qw/Class::Accessor::Fast/;
 
@@ -13,7 +13,6 @@ use Shipwright::Logger;
 use Shipwright::Util;
 use Shipwright::Backend;
 use Shipwright::Source;
-use Shipwright::Build;
 use File::Temp qw/tempfile/;
 use File::Spec::Functions qw/catfile tmpdir/;
 
@@ -41,7 +40,6 @@ sub new {
 
     if ( $args{repository} ) {
         $self->backend( Shipwright::Backend->new(%args) );
-        $self->build( Shipwright::Build->new(%args) );
     }
 
     if ( $args{source} ) {
@@ -121,13 +119,8 @@ invoked like this:
 
 $ shipwright import ...
 
-$ shipwright build ...
-
-If you receive a Shipwright repository but don't have Shipwright installed
-on your system, you can still build and install a vessel with the repository's
-included F<bin/shipwright-builder> script. It's recommended and even encouraged
-to build with this script, as you can change it freely without worrying that
-the changes might affect other shipwright builds.
+$ check out your repository and cd there
+$ ./shipwright-builder ...
 
 =head2 What's in a Shipwright repository or vessel
 
