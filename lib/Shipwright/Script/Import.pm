@@ -49,7 +49,7 @@ sub run {
     my $source;
     $source = $sources[0];
     confess "--name and --as args are not supported when importing multiple sources"
-      if @sources != 1 && $self->name;
+      if @sources > 1 && $self->name;
 
     if ( $self->min_perl_version ) {
         require version;
@@ -78,6 +78,7 @@ sub run {
             $source = $source_yml->{$self->name};
         }
 
+        @sources = $source;
     }
 
     confess "we need source arg\n" unless $source;
@@ -415,7 +416,7 @@ __END__
 
 =head1 NAME
 
-Shipwright::Script::Import - import a source and its dependencies
+Shipwright::Script::Import - Import sources and their dependencies
 
 =head1 SYNOPSIS
 
