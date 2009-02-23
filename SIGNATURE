@@ -1,0 +1,130 @@
+This file contains message digests of all files listed in MANIFEST,
+signed via the Module::Signature module, version 0.55.
+
+To verify the content in this distribution, first make sure you have
+Module::Signature installed, then type:
+
+    % cpansign -v
+
+It will check each file's integrity, as well as the signature's
+validity.  If "==> Signature verified OK! <==" is not displayed,
+the distribution may already have been compromised, and you should
+not run its Makefile.PL or Build.PL.
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+SHA1 7b63f74ca6252f96258e042371293a2abf3ba4c4 Changes
+SHA1 2300de961ffc986e6c9322b514d79bc8b1d3018f MANIFEST
+SHA1 08957493d442853c5fe3ff7fff60a664df31980a META.yml
+SHA1 95b2e38a54a7f7013ba89f4e7de15a5f5c578f5f Makefile.PL
+SHA1 7519282b95cef540a8e09be9eddd8a7d95f956a5 README
+SHA1 32c4e3373f9c302d641e9f3479c4552f0c25cc31 TODO
+SHA1 ffe2ad6aa154842b2569ad49209be0ae21ad6bcc bin/jeos-build
+SHA1 8d05c6082a859cc026094c5d9a172093092df42e bin/shipwright
+SHA1 603bb9de29fb8cba7f13409c546750972eff645d inc/Module/AutoInstall.pm
+SHA1 ae018c4565c1277089ca8f1b28f888d95430cb7f inc/Module/Install.pm
+SHA1 d001b4b9a48395a8c4134b234a0e1789138427c5 inc/Module/Install/AuthorTests.pm
+SHA1 0a6f29536bedea3bb94744a7d43ffe39da7e4819 inc/Module/Install/AutoInstall.pm
+SHA1 4552acdfca8b78f8015d8449e1325616259095f5 inc/Module/Install/Base.pm
+SHA1 7fb663fff161fb45882b52edd62857bf15359658 inc/Module/Install/Can.pm
+SHA1 8b1d3db746faa6faf2d967a48d3812ec1f44b4c6 inc/Module/Install/Fetch.pm
+SHA1 d7ce736cdd05d5156d379ef39cca93beeeeba828 inc/Module/Install/Include.pm
+SHA1 9f6beaa2f4749ceb5dd0c9b0c647d0f3289c7b46 inc/Module/Install/Makefile.pm
+SHA1 bd988ba3fb7eee0ad889eadc2f5338a8d98fc2a3 inc/Module/Install/Metadata.pm
+SHA1 c7a2f62c657b11f737d86227799369b1c4eaf74d inc/Module/Install/Scripts.pm
+SHA1 6fded2227832b2cbe35b7c49da58f32d3e33d23d inc/Module/Install/Share.pm
+SHA1 e9aa83f3e8b16ccfce544a90a57b63b70a497759 inc/Module/Install/Win32.pm
+SHA1 ade2ac0b0246d4d8e28fa46942e53f6925abda46 inc/Module/Install/WriteAll.pm
+SHA1 0714b5f784b2853a35e9e6f15cebf4ec706536ec lib/Shipwright.pm
+SHA1 bf7e87069d92f7a1f257d03b32bdc0630813b975 lib/Shipwright/Backend.pm
+SHA1 12874a37600903fd813029a02e6f763c878561e2 lib/Shipwright/Backend/Base.pm
+SHA1 096317f58b63502d276b41800db5c943556cb685 lib/Shipwright/Backend/FS.pm
+SHA1 cadc2e7464c1c85ae3c3440527f54b883a4e3a1f lib/Shipwright/Backend/SVK.pm
+SHA1 9b26164aad61d15fe6eee26986b92b3689f9bfcf lib/Shipwright/Backend/SVN.pm
+SHA1 250f45b2667df8685dcefbb13ada08403555408b lib/Shipwright/Logger.pm
+SHA1 294a56c57a3c7d1e9e9d03335e5862bc3a601cec lib/Shipwright/Manual.pod
+SHA1 19f00042d9d9640d66ff9c790ed8c3d9867b24c8 lib/Shipwright/Manual/CustomizeBuild.pod
+SHA1 4c77f359663ab6b692923e433e81cbcb0c38c8dd lib/Shipwright/Manual/Glossary.pod
+SHA1 0b07069c7ba0fd0e4cf7403d95dfc84eb8423764 lib/Shipwright/Manual/Tutorial.pod
+SHA1 6c211cc38cb6c2d1cff1de1c863b1aa0ad9e68d3 lib/Shipwright/Manual/UsingBranches.pod
+SHA1 0365c9283da278b83f5f7e8541bd012c46da326d lib/Shipwright/Manual/UsingFlags.pod
+SHA1 099aafb343b781a817402f15cef5418dbef56812 lib/Shipwright/Script.pm
+SHA1 d0835e8940dd12b35d36368715530113cba9907f lib/Shipwright/Script/Create.pm
+SHA1 9a26c1b7db379ef7e07b0d5d214062a31ba506cd lib/Shipwright/Script/Defaultbranch.pm
+SHA1 c020b3430234c11aebebd860435866af8b0d6a2a lib/Shipwright/Script/Delete.pm
+SHA1 2ae83aec66d9caa11450f835d760a23bdf07f548 lib/Shipwright/Script/Flags.pm
+SHA1 6ca2bb2e04e61feea096291bda4697cc3ade8a4e lib/Shipwright/Script/Help.pm
+SHA1 92cea73d2ed73ac0c6e78ff242851afefedf244e lib/Shipwright/Script/Import.pm
+SHA1 3223e53cf099688786fc8657032efaefed3baf44 lib/Shipwright/Script/Ktf.pm
+SHA1 b72adfb1df3f0208923ee141fa7e154c95b82798 lib/Shipwright/Script/List.pm
+SHA1 876566a6e9b30d7b3607d1bcd61444b50c3c4abc lib/Shipwright/Script/Maintain.pm
+SHA1 7eec366d1d077c49bd125ddea55443b81911a49b lib/Shipwright/Script/Relocate.pm
+SHA1 b3bc4d7282773ef0b151f18ece35cd6c63ca27cf lib/Shipwright/Script/Rename.pm
+SHA1 cc186f223f01f801f3ef9ab84ee10479d8a23e7e lib/Shipwright/Script/Update.pm
+SHA1 18a704ee57fa557f0219addc873c709e2a194a8f lib/Shipwright/Source.pm
+SHA1 30b4d23ce2d150c1d48a6d3eb4c5c3a726bfd7ee lib/Shipwright/Source/Base.pm
+SHA1 510efe5ec335449980420c0a03f4e543c66c4bc1 lib/Shipwright/Source/CPAN.pm
+SHA1 2e3b53585f4443679801192d16bfb05dd0e39884 lib/Shipwright/Source/Compressed.pm
+SHA1 7c20bb098b75937f7ffa03a6a05ebbddb00448ed lib/Shipwright/Source/Directory.pm
+SHA1 223425429745579dc20ca421597fec78a77f2e2f lib/Shipwright/Source/FTP.pm
+SHA1 e28a845e6efa84b338a2ea09c1a4a52bd726498e lib/Shipwright/Source/Git.pm
+SHA1 3160524c4cf8471e3ebf04948f05484cb68b5d58 lib/Shipwright/Source/HTTP.pm
+SHA1 e73575071d8a2eae03274f10c16e2f7684a61a3a lib/Shipwright/Source/SVK.pm
+SHA1 234b0351afe43da3c3b9504ab857906af62ae7cd lib/Shipwright/Source/SVN.pm
+SHA1 b8cc5ce4a8a7cd5fa739a6ea080c629d32c1c1f9 lib/Shipwright/Source/Shipwright.pm
+SHA1 fad4c55d1505893e800d232dbfb03d223731af04 lib/Shipwright/Test.pm
+SHA1 976e1ae05d03dcfbe00ed16fa2ae79c93ef756d8 lib/Shipwright/Util.pm
+SHA1 805b26488d77d4025e6dc56930e05b75bc0ef5a4 lib/Shipwright/Util/CleanINC.pm
+SHA1 e1dc3e120993af206e2cb021d4a85a5288f8d5d4 share/bin/shipwright-builder
+SHA1 822c17b87302e06bf0a69edb981fb822a8230fa0 share/bin/shipwright-utility
+SHA1 84b106a8dea3860acdc2be7ee83aa709d1fe5ed3 share/etc/shipwright-perl-wrapper
+SHA1 9f5a5d1188bb9d1f732227cd40a17e14031c390a share/etc/shipwright-script-wrapper
+SHA1 ef7ec3b1b12d19f19e7b9b053a16016d2e6425eb share/etc/shipwright-source-bash
+SHA1 23b70ed31d568dc8be509ff90c5a507d9a486bc6 share/etc/shipwright-source-tcsh
+SHA1 d0649a4eb89b78c81f46435b893e4516948aa957 share/etc/shipwright-utility
+SHA1 99f501a304f2abd9668b1014031b3ba9b312be13 share/etc/shipwright-windows-setenv.bat
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/branches.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/flags.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/known_test_failures.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/map.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/order.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/refs.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/source.yml
+SHA1 29e0c3615294958e3ca433eeab7a7199be318946 share/shipwright/version.yml
+SHA1 da39a3ee5e6b4b0d3255bfef95601890afd80709 share/t/test
+SHA1 d23789c9c69045a319fed93a27e8826b05eba01e t/00.load.t
+SHA1 ce0d7c25a1425c10d9de538f81f5066d35694882 t/01.repo_check.t
+SHA1 dbce1c16ec09271ef87e55e05699d63aea7dbf5f t/02.shipwright.t
+SHA1 9cbfc42e88150a82f5790b7c6891daaf80df5c01 t/03.backend.t
+SHA1 61bcdef62a4387eebe9e245ceb96e5454016a907 t/04.source.t
+SHA1 435e8b2bcac169f245cc3d46322af2ca63917b62 t/05.util.t
+SHA1 331d4b9c31f7494d55ad62973f19a1de26697386 t/06.logger.t
+SHA1 7e21f485cc20093449050e5cae07f0c7f05fe5d1 t/07.script.t
+SHA1 2138d690491371ba532e52187d517af2bf80d581 t/08.build.t
+SHA1 6b3482fb44427415b902bdf87d2b3cbe72d752fc t/10.flags.t
+SHA1 3d5df5d34cf8ebd76f61b5d4495f787d2fafa5ed t/71.script_cmds.t
+SHA1 95f46abaae50bb7dd49d33739bbb9f8d6e4766b1 t/dists/dir_configure/configure
+SHA1 ea07b56edd2aa0e147dbb371103c032d98614315 t/dists/tbz_make.tar.bz2
+SHA1 25188d934d9d33dc1f5627ab917465f0efe21203 t/dists/tgz_build.tar.gz
+SHA1 e5fa44f2b31c1fb553b6021e7360d07d5d91ff5e t/dists/version1/info
+SHA1 7448d8798a4380162d4b56f9b452e2f6f9e24e7a t/dists/version2/info
+SHA1 d7707ce0616e4d419b909ad7ab8307cd319be42e t/hello/Foo-Bar-v0.01.tar.gz
+SHA1 25c7cb1e255b14b0e0d892c583d987c37355fd02 t/hello/fs.t
+SHA1 7139ce5dfd2090337cb0ac8c56658dc4dc09c217 t/hello/scripts/build
+SHA1 b786b2448cb52526a50d5f088504fe67b329d1c5 t/hello/scripts/howdy_require.yml
+SHA1 bfaed7eccf6e1f42b76330548bea6e0b132c3006 t/hello/scripts/require.yml
+SHA1 ea3c6d9dbc269b5102efa6e0e34f6eb7c50a9fba t/hello/shipwright/order.yml
+SHA1 a78fc4c3c9d8c1443952fe679295438bd0be71e6 t/hello/svk.t
+SHA1 be5c68d0dd9b36d6028445f0bdc4a029300ed30b t/hello/svn.t
+SHA1 a5db05add065ca365ef37f8cce0d59bf7ce6e70d xt/99.kwalitee.t
+SHA1 c35b6f3d5e2b088adaf535fdc65ddfe0c8200302 xt/perlcritic.t
+SHA1 5f4be94d31f82e13c82b84410903544a2c370396 xt/pod-coverage.t
+SHA1 0b6ee3329771b9d5fefeafcdaf6f7c5510c0c58f xt/pod.t
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.9 (Darwin)
+
+iEYEARECAAYFAkmi2SIACgkQEi9d9xCOQEZQcwCcCOCw78tNA4Pvd7WxYcA9t/EE
+AQkAoKEyEon2I4e8agqa5TgD7Dmc2dHj
+=nT7c
+-----END PGP SIGNATURE-----
