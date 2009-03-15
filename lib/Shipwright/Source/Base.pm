@@ -14,6 +14,7 @@ use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
     qw/source directory scripts_directory download_directory follow
       min_perl_version map_path skip map skip_recommends skip_all_recommends
+      include_dual_lifed
       keep_build_requires name log url_path version_path branches_path version/
 );
 
@@ -98,7 +99,51 @@ sub _follow {
         my $require = {};
         chdir catdir($path);
 
-        if ( -e 'Build.PL' ) {
+        if ( $path =~ /\bcpan-Bundle-(.*)/ ) {
+
+            my $file = $1;
+            $file =~ s!-!/!;
+            $file .= '.pm';
+
+            # so it's a bundle module
+            open my $fh, '<', 'MANIFEST' or confess "no manifest found: $!";
+            while (<$fh>) {
+                chomp;
+                if (/$file/) {
+                    $file = $_;
+                    last;
+                }
+            }
+            open $fh, '<', $file or confess "can't open $file: $!";
+            my $flip;
+            while (<$fh>) {
+                chomp;
+                next if /^\s*$/;
+
+                if (/^=head1\s+CONTENTS/) {
+                    $flip = 1;
+                    next;
+                }
+                elsif (/^=(?!head1\s+CONTENTS)/) {
+                    $flip = 0;
+                }
+
+                next unless $flip;
+                my $info;
+                if (/(.*?)-/) {
+
+                    # things following '-' are comments which we don't want here
+                    $info = $1;
+                }
+                else {
+                    $info = $_;
+                }
+                my ( $module, $version ) = split /\s+/, $info;
+                $require->{requires}{$module} = $version || 0;
+            }
+
+        }
+        elsif ( -e 'Build.PL' ) {
             Shipwright::Util->run(
                 [
                     $^X,               '-Mversion',
@@ -292,20 +337,15 @@ EOF
 
 #$module shouldn't be undefined, but it _indeed_ happens in reality sometimes
                 next unless $module;
-
                 # we don't want to require perl
                 if ( $module eq 'perl' ) {
                     delete $require->{$type}{$module};
                     next;
                 }
 
-                if (
-                    Module::CoreList->first_release( $module,
-                        $require->{$type}{$module}{version} )
-                    && Module::CoreList->first_release( $module,
-                        $require->{$type}{$module}{version} ) <=
-                    $self->min_perl_version
-                  )
+                if ( !$self->include_dual_lifed 
+                    && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} )
+                    && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} ) <= $self->min_perl_version)
                 {
                     delete $require->{$type}{$module};
                     next;
@@ -328,7 +368,6 @@ EOF
 
                     opendir my $dir, $self->directory;
                     my @sources = readdir $dir;
-
                     close $dir;
 
                     #reload map

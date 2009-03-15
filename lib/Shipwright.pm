@@ -2,7 +2,7 @@ package Shipwright;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('2.1.4');
+use version; our $VERSION = qv('2.1.5');
 
 use base qw/Class::Accessor::Fast/;
 
@@ -18,11 +18,16 @@ use File::Spec::Functions qw/catfile tmpdir/;
 sub new {
     my $class = shift;
 
-    my %args = @_;
+    my %args = (
+        log_level  => undef,
+        log_file   => undef,
+        repository => undef,
+        source     => undef,
+        @_
+    );
     $args{log_level} = uc $args{log_level} || 'FATAL';
 
     unless ( $args{log_file} ) {
-
         # a better named log_file, in the name of repository
         my $info = join '', map { /\w/ ? $_ : '_' } split //, $args{repository};
         $args{log_file} = catfile( tmpdir(), "shipwright_$info.log" );

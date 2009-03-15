@@ -100,7 +100,6 @@ t/hello/scripts/require.yml
 t/hello/shipwright/order.yml
 t/hello/svk.t
 t/hello/svn.t
-SIGNATURE
 TODO
 xt/99.kwalitee.t
 xt/perlcritic.t
