@@ -357,7 +357,7 @@ sub update_order {
 
 =item graph_deps
 
-Output a dependency graph in graphviz format to stdout
+return a dependency graph in graphviz format
 
 =cut
 
@@ -380,18 +380,19 @@ sub graph_deps {
         $self->_fill_deps( %args, require => $require, name => $distname );
     }
 
-    print 'digraph g {
+    my $out = 'digraph g {
         graph [ overlap = scale, rankdir= LR ];
         node [ fontsize = "18", shape = record, fontsize = 18 ];
     ';
 
     for my $dist (@dists) {
-        print qq{ "$dist" [shape = record, fontsize = 18, label = "$dist" ];\n};
+        $out .= qq{ "$dist" [shape = record, fontsize = 18, label = "$dist" ];\n};
         for my $dep ( @{ $require->{$dist} } ) {
-            print qq{"$dist" -> "$dep";\n};
+            $out .= qq{"$dist" -> "$dep";\n};
         }
     }
-    print "\n};\n";
+    $out .= "\n};";
+    return $out;
 }
 
 sub _fill_deps {
@@ -401,10 +402,7 @@ sub _fill_deps {
     my $name    = $args{name};
 
     return if $require->{$name};
-    my $out = Shipwright::Util->run(
-        $self->_cmd( 'cat', path => "/scripts/$name/require.yml" ), 1 );
-
-    my $req = Shipwright::Util::Load($out) || {};
+    my $req = $self->requires( name => $name ) || {};
 
     if ( $req->{requires} ) {
         for (qw/requires recommends build_requires/) {
@@ -817,10 +815,7 @@ sub update_refs {
         # initialize here, in case we don't have $name entry in $refs
         $refs->{$name} ||= 0;
 
-        my $out = Shipwright::Util->run(
-            $self->_cmd( 'cat', path => "/scripts/$name/require.yml" ), 1 );
-
-        my $req = Shipwright::Util::Load($out) || {};
+        my $req = $self->requires( name => $name ) || {};
 
         my @deps;
         if ( $req->{requires} ) {

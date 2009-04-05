@@ -43,7 +43,7 @@ sub prepare {
         $ARGV[0] = 'help';
     }
     elsif ( $ARGV[0] =~ /^(-v|--version|version)$/ ) {
-        print "This is Shipwright, version $Shipwright::VERSION\n";
+        $self->log->fatal( "This is Shipwright, version $Shipwright::VERSION" );
         exit 0;
     }
 
@@ -52,6 +52,8 @@ sub prepare {
     my $cmd = $self->SUPER::prepare(@_);
 
     unless ( ref $cmd eq 'Shipwright::Script::Help' ) {
+        $cmd->repository( $ENV{SHIPWRIGHT_REPOSITORY} )
+          if !$cmd->repository && $ENV{SHIPWRIGHT_REPOSITORY};
         if ( $cmd->repository ) {
             my $backend =
               Shipwright::Backend->new( repository => $cmd->repository );

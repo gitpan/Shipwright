@@ -176,7 +176,11 @@ sub _follow {
                 $makefile =~ s/^\s*requires(?!\w)/shipwright_requires/mg;
                 $makefile =~
                   s/^\s*build_requires(?!\w)/shipwright_build_requires/mg;
+                $makefile =~
+                  s/^\s*test_requires(?!\w)/shipwright_test_requires/mg;
+                $makefile =~ s/^\s*recommends(?!\w)/shipwright_recommends/mg;
                 $makefile =~ s/^\s*features(?!\w)/shipwright_features/mg;
+                $makefile =~ s/^\s*feature(?!\w)/shipwright_feature/mg;
                 my $shipwright_makefile = <<'EOF';
 my $shipwright_req = {};
 
@@ -196,6 +200,36 @@ sub shipwright_requires {
 sub shipwright_build_requires {
     _shipwright_requires( 'build_requires', @_ == 1 ? ( @_, 0 ) : @_ );
     goto &build_requires;
+}
+
+sub shipwright_test_requires {
+    _shipwright_requires( 'build_requires', @_ == 1 ? ( @_, 0 ) : @_ );
+    goto &test_requires;
+}
+
+sub shipwright_recommends {
+    _shipwright_requires( 'recommends', @_ == 1 ? ( @_, 0 ) : @_ );
+    goto &recommends;
+}
+
+sub shipwright_feature {
+    my $name = shift;
+    my @mods = @_;
+    for ( my $i = 0 ; $i < @mods ; $i++ ) {
+        if ( $mods[$i] eq '-default' ) {
+            $i++;    # skip the -default value
+        }
+        elsif ( $mods[ $i + 1 ] =~ /^[\d\.]*$/ ) {
+
+            # index $i+1 is a version
+            $shipwright_req->{recommends}{ $mods[$i] } = $mods[ $i + 1 ] || 0;
+            $i++;
+        }
+        else {
+            $shipwright_req->{recommends}{ $mods[$i] } = 0;
+        }
+    }
+    goto &feature;
 }
 
 sub shipwright_features {
@@ -413,6 +447,7 @@ EOF
                             # if run returns false, we should skip trying to install it.
                             # this lets us skip explicit dependencies that are actually part of the perl core
                             #delete $require->{$type}{$module};
+                            chdir $cwd;
                             next;
 
                         }

@@ -18,26 +18,31 @@ sub options {
 }
 
 sub run {
-    my $self = shift;
-    my $name = shift;
-
-    confess "need name arg\n" unless $name;
+    my $self  = shift;
+    my @names = @_;
 
     my $shipwright = Shipwright->new( repository => $self->repository, );
 
     my $ktf = $shipwright->backend->ktf;
 
     if ( $self->delete || defined $self->set ) {
+        confess "need name arg\n" unless @names;
+
         if ( $self->delete ) {
-            delete $ktf->{$name};
+            delete $ktf->{$_} for @names;
         }
         if ( defined $self->set ) {
-            $ktf->{$name} = $self->set;
+            $ktf->{$_} = $self->set for @names;
         }
         $shipwright->backend->ktf($ktf);
     }
 
-    $self->_show_ktf( $ktf, $name );
+    if ( @names ) {
+        $self->_show_ktf( $ktf, $_ ) for @names;
+    }
+    else {
+        $self->_show_ktf( $ktf, $_ ) for sort keys %$ktf;
+    }
 }
 
 sub _show_ktf {
@@ -46,14 +51,15 @@ sub _show_ktf {
     my $name = shift;
 
     if ( $self->delete ) {
-        print "deleted known test failure for $name\n";
+        $self->log->fatal( "deleted known test failure for $name" );
     }
     else {
         if ( defined $self->set ) {
-            print "set known test failure condition for $name with success\n";
+            $self->log->fatal(
+                "set known test failure condition for $name with success");
         }
 
-        print 'the condition is: ' . ( $ktf->{$name} || 'undef' ) . "\n";
+        $self->log->fatal( "the condition of $name is: " . ( $ktf->{$name} || 'undef' ) );
     }
 }
 
@@ -67,7 +73,7 @@ Shipwright::Script::Ktf - Maintain a dist's known test failure conditions
 
 =head1 SYNOPSIS
 
- ktf NAME --set '$^O eq "darwin"'
+ ktf NAME1 NAME2 ... --set '$^O eq "darwin"'
 
 =head1 OPTIONS
 
