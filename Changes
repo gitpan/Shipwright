@@ -1,12 +1,16 @@
 Revision history for Shipwright
 
+2.1.7 Sat Apr 18 15:30:10 CST 2009
+
+this's a bug fix version, also a bit tweak
+
 2.1.6 Sun Apr  5 13:38:59 CST 2009
 
 update for modules use Module::Install:
 + test_requires support( it's the same as build_requires )
 + recommends and feature support
 
-update for normal cmds:
+update for cmds:
 + env SHIPWRIGHT_REPOSITORY support so we do not need to write -r ... in each cmd all the time
 + --delete-deps for update cmd
 * refactor ktf cmd so we can set or show multiple dists at a time
