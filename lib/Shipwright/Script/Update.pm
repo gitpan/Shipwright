@@ -39,7 +39,11 @@ my ( $shipwright, $map, $source, $branches );
 sub run {
     my $self = shift;
 
-    $shipwright = Shipwright->new( repository => $self->repository, );
+    $shipwright = Shipwright->new(
+        repository => $self->repository,
+        log_level  => $self->log_level,
+        log_file   => $self->log_file
+    );
 
     if ( $self->builder ) {
         $shipwright->backend->update( path => '/bin/shipwright-builder' );
@@ -298,7 +302,7 @@ Shipwright::Script::Update - Update dist(s) and scripts
 
 =head1 DESCRIPTION
 
-The update command updates one or multiple svk, svn, or CPAN dists in a
+The update command updates one or multiple svk, svn, git or CPAN dists in a
 Shipwright repository to the latest version. 
 To update other types of sources, you must re-import the new version, using the same name in order to overwrite.
 
