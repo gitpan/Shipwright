@@ -38,20 +38,19 @@ sub initialize {
 
     my $dir = $self->SUPER::initialize(@_);
 
-    my $cwd = getcwd;
-    chdir $dir;
-    Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'init' ] );
-    Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'add', '.' ] );
-    Shipwright::Util->run(
-        [ $ENV{'SHIPWRIGHT_GIT'}, 'commit', '-m', 'creating repository' ] );
-
     my $path = $self->repository;
     $path =~ s!^file://!!;    # this is always true since we check that before
 
     Shipwright::Util->run( [ 'rm', '-rf', $path ] );
+    Shipwright::Util->run( [ 'mkdir', '-p', $path ] );
 
-    dircopy( catdir( $dir, '.git' ), $path )
+    my $cwd = getcwd;
+    chdir $path;
+    Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, '--bare', 'init' ] );
+
+    dircopy( $dir, $self->cloned_dir )
       or confess "can't copy $dir to " . $path . ": $!";
+    $self->commit( comment => 'create project' );
     chdir $cwd;
 }
 
@@ -75,6 +74,12 @@ sub cloned_dir {
     my $target = catdir( $base_dir, 'clone' );
     Shipwright::Util->run(
         [ $ENV{'SHIPWRIGHT_GIT'}, 'clone', $self->repository, $target ] );
+    my $cwd = getcwd;
+    chdir $target; 
+    # git 1.6.3.3 will warn if we don't specify push.default
+    Shipwright::Util->run(
+        [ $ENV{'SHIPWRIGHT_GIT'}, 'config', 'push.default', 'matching' ] );
+    chdir $cwd;
     return $cloned_dir = $target;
 }
 
@@ -185,12 +190,13 @@ sub commit {
         my $cwd = getcwd;
         chdir $self->cloned_dir or return;
 
-        Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'add', '.' ] );
+        Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'add', '-f', '.' ] );
 
         #    TODO comment need to be something special
         Shipwright::Util->run(
             [ $ENV{'SHIPWRIGHT_GIT'}, 'commit', '-m', $args{comment} ], 1 );
-        Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'push' ] );
+        Shipwright::Util->run(
+            [ $ENV{'SHIPWRIGHT_GIT'}, 'push', 'origin', 'master' ] );
         chdir $cwd;
     }
     return;
