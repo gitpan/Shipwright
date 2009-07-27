@@ -162,7 +162,7 @@ sub _follow {
               or confess "can't read Build.PL: $!";
 
             Shipwright::Util->run(
-                [ './Build', 'realclean', '--allow_mb_mismatch', 1 ] );
+                [ $^X, 'Build', 'realclean', '--allow_mb_mismatch', 1 ] );
         }
         elsif ( -e 'Makefile.PL' ) {
             my $makefile = read_file('Makefile.PL')
@@ -186,6 +186,7 @@ sub _follow {
                 $makefile =~
                     s/^\s*test_requires_from(?!\w)/shipwright_test_requires_from/mg;
                 my $shipwright_makefile = <<'EOF';
+use Data::Dumper;
 my $shipwright_req = {};
 
 sub _shipwright_requires {
@@ -311,7 +312,6 @@ sub shipwright_features {
 }
 
 END {
-require Data::Dumper;
 open my $tmp_fh, '>', 'shipwright_prereqs';
 print $tmp_fh Data::Dumper->Dump( [$shipwright_req], [qw/require/] );
 }
@@ -656,7 +656,7 @@ return true if the source is compressed file, i.e. tar.gz(tgz) and tar.bz2
 
 sub is_compressed {
     my $self = shift;
-    return 1 if $self->source =~ m{.*/.+\.(tar.(gz|bz2)|tgz)$};
+    return 1 if $self->source =~ m{\.(tar.(gz|bz2)|tgz)$};
     return;
 }
 
