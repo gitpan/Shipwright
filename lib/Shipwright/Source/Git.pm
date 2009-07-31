@@ -4,8 +4,10 @@ use warnings;
 use strict;
 use Carp;
 use File::Spec::Functions qw/catdir/;
+use File::Path qw/remove_tree/;
 
 use base qw/Shipwright::Source::Base/;
+use Cwd qw/getcwd/;
 
 =head2 new
 
@@ -49,20 +51,30 @@ sub _run {
     my $self   = shift;
     my $source = $self->source;
 
-    my @cmds = (
-        [
-            $ENV{'SHIPWRIGHT_GIT'}, 'clone', $self->source,
-            catdir( $self->download_directory, $self->name ),
-        ],
-    );
+    my $path = catdir( $self->download_directory, $self->name );
+    my @cmds = ( [ $ENV{'SHIPWRIGHT_GIT'}, 'clone', $self->source, $path, ] );
 
-# TODO handle the version stuff
+    # work out the version stuff
+    push @cmds, sub {
+        my $cwd = getcwd();
+        chdir $path;
+        if ( $self->version ) {
+            Shipwright::Util->run(
+                [ $ENV{'SHIPWRIGHT_GIT'}, 'checkout', $self->version ] );
+        }
+        else {
+            my ($out) = Shipwright::Util->run(
+                [ $ENV{'SHIPWRIGHT_GIT'}, 'log' ] );
+            if ( $out =~ /^commit\s+(\w+)/m ) {
+                $self->version($1);
+            }
+        }
+        chdir $cwd;
+    };
 
-    push @cmds,
-    [
-        'rm', '-rf',
-        catdir( $self->download_directory, $self->name, '.git' ),
-    ];
+    push @cmds, sub {
+        remove_tree( catdir( $self->download_directory, $self->name, '.git' ) );
+    };
 
     $self->source( catdir( $self->download_directory, $self->name ) );
     Shipwright::Util->run($_) for @cmds;

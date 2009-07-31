@@ -6,7 +6,7 @@ use strict;
 use lib 'inc';
 use File::Spec::Functions qw/catfile catdir splitdir rel2abs/;
 use File::Temp qw/tempdir/;
-use File::Copy qw/move copy/;
+use File::Copy::Recursive qw/rmove rcopy/;
 use File::Find qw/find/;
 use File::Path;
 use Config;
@@ -92,7 +92,7 @@ Less commonly needed options:
                 Ex: --with svn=dir:/home/foo/svn
                 'svn' is the dist name, 'dir:/home/foo/svn' is its source code,
                 in the format of a Shipwright source distribution.
-  --make        The path of your make command, default is 'make'.
+  --make        The path of your make command, default is \$ENV{SHIPWRIGHT_MAKE}' if that's defined, else 'make'
                 Ex: --make /usr/bin/make
   --branches    Specify the branch of a given package in the vessel you want 
                 to build.
@@ -125,14 +125,26 @@ $args{flags} = {
 
 $args{with}     = { map { split /=/ } split /\s*,\s*/, $args{with}     || '' };
 $args{branches} = { map { split /=/ } split /\s*,\s*/, $args{branches} || '' };
-$args{make} ||= 'make';
-my $uname_cmd = 'uname';
-if ( $^O !~ /MSWin/ ) {
-    $uname_cmd .= ' 2>/dev/null';
+
+$args{make} ||= $ENV{SHIPWRIGHT_MAKE};
+unless ( $args{make} ) {
+    if ( is_on_windows() ) {
+        $args{make} ||= 'dmake'; # strawberry perl distribution has dmake.exe
+    }
+    else {
+        $args{make} ||= 'make';
+    }
 }
-my $uname = `$uname_cmd`;
-chomp $uname;
-$args{as} ||= $uname || 'default';
+
+
+if ( is_on_windows() ) {
+    $args{as} ||= 'MSWin';
+}
+else {
+    my $uname = `uname 2>/dev/null`;
+    chomp $uname;
+    $args{as} ||= $uname || 'default';
+}
 
 if ( $args{only} ) {
     $args{only} = { map { $_ => 1 } split /\s*,\s*/, $args{only} };
@@ -235,7 +247,7 @@ else {
 my $log;
 my $build_log_file  = rel2abs('build.log');
 my $system_cmd_pipe = '';
-if ( $^O !~ /MSWin/ && !$args{'verbose'} ) {
+unless ( is_on_windows() || $args{'verbose'} ) {
     $system_cmd_pipe = " >>$build_log_file 2>&1";
 }
 
@@ -303,7 +315,7 @@ sub install {
     {
 
         my $arch_command = $args{perl} || $^X;
-        if ( $^O =~ /MSWin/ ) {
+        if ( is_on_windows() ) {
             $arch_command .= q{ -MConfig -e "print $Config{archname}"};
         }
         else {
@@ -356,14 +368,14 @@ sub install {
       unless -e catdir( $args{'install-base'}, 'tools' );
 
     for ( 'shipwright-script-wrapper', 'shipwright-perl-wrapper' ) {
-        copy( catfile( 'etc', $_ ),
+        rcopy( catfile( 'etc', $_ ),
             catfile( $args{'install-base'}, 'etc', $_ ) );
     }
 
     for ( 'shipwright-utility', 'shipwright-source-bash',
         'shipwright-source-tcsh' )
     {
-        copy( catfile( 'etc', $_ ),
+        rcopy( catfile( 'etc', $_ ),
             catfile( $args{'install-base'}, 'tools', $_ ) );
     }
 
@@ -383,7 +395,7 @@ sub install {
         {
             my $dir = catdir( $args{'install-base'}, $r );
             next unless -e $dir;
-            `rm -rf $dir`;
+            remove_tree( $dir );
         }
     }
 
@@ -399,7 +411,7 @@ sub install {
 
     # in case wrappers are overwritten by accident
     for ( 'shipwright-script-wrapper', 'shipwright-perl-wrapper' ) {
-        copy( catfile( 'etc', $_ ),
+        rcopy( catfile( 'etc', $_ ),
             catfile( $args{'install-base'}, 'etc', $_ ) );
     }
 
@@ -414,11 +426,11 @@ sub install {
     my $as_dir = catdir( 'as', $args{as} );
     mkdir $as_dir;
 
-    if ( $^O !~ /MSWin/ ) {
+    unless( is_on_windows() ) {
         for my $r ( 'lib', 'bin', 'sbin' ) {
             next unless -e $r;
             my $dir = catdir( $as_dir, $r );
-            system("mv $r $as_dir");
+            rmove( $r, catdir( $as_dir, $r ) );
 
             if ( $r !~ /bin/ ) {
                 symlink $dir, $r;
@@ -430,7 +442,7 @@ sub install {
         mkdir $usr_dir;
         for my $r ( 'bin', 'sbin' ) {
             next unless -e catdir( 'usr', $r );
-            system( "mv " . catdir( 'usr', $r ) . ' ' . $usr_dir );
+            rmove( catdir( 'usr', $r ), catdir( $usr_dir, $r ) );
         }
         chdir $cwd;
 
@@ -459,10 +471,9 @@ sub _install {
             if ( !$branch && -d catdir( 'sources', $dir, 'vendor' ) ) {
                 $branch = 'vendor';
             }
-            system( "cp -r "
-                  . catdir( 'sources', $dir, split /\//, $branch ) . ' '
-                  . catdir( 'dists', $dir ) )
-              && confess "cp sources/$dir/$branch to dists/$dir failed";
+            rcopy( catdir( 'sources', $dir, split /\//, $branch ),
+                catdir( 'dists', $dir ) )
+              or confess "copy sources/$dir/$branch to dists/$dir failed: $!";
         }
         chdir catdir( 'dists', $dir );
     }
@@ -564,7 +575,7 @@ sub wrap_bin {
 
         my $wrap_file = catfile( $wrap_dir, $file );
         my $tmp = $File::Find::dir;
-        $tmp =~ s/$args{'install-base'}//g;
+        $tmp =~ s/\Q$args{'install-base'}\E//g;
         my $wrapped_depth =
           scalar( splitdir($File::Find::dir) ) -
           scalar( splitdir( $args{'install-base'} ) ) - 2;
@@ -643,7 +654,7 @@ sub substitute {
     }
 
     my $perl_archname;
-    if ( $^O =~ /MSWin/ ) {
+    if ( is_on_windows() ) {
         $perl_archname = `$perl -MConfig -e "print \$Config{archname}"`;
     }
     else {
@@ -655,7 +666,7 @@ sub substitute {
     $text =~ s/%%MODULE_BUILD_EXTRA%%//g;
     $text =~ s/%%MAKE%%/$args{make}/g;
 
-    if ( $^O =~ /MSWin/ ) {
+    if ( is_on_windows() ) {
 `$perl -I$inc_lib -MShipwright::Util::CleanINC -e"eval { require Pod::Man}; if (\$@) { exit 1} else { exit 0 }" `;
     }
     else {
@@ -725,11 +736,11 @@ sub cmds {
 sub clean {
     open my $log, '>', 'clean.log' or confess $!;
 
-    system('rm -rf tmp_dists') && confess "rm tmp_dists failed\n";
+    remove_tree( 'tmp_dists');
     print $log "removed tmp_dists\n";
 
     if ($branches) {
-        system('rm -rf dists') && confess "rm dists failed\n";
+        remove_tree('dists');
         print $log "removed dists\n";
     }
     else {
@@ -809,21 +820,24 @@ sub process_tmp_dists {
 
     for my $name ( keys %{ $args{with} } ) {
         my $cmd = cmd( $name, $args{with}{$name} );
-        if ($cmd) {
+        if ( ref $cmd eq 'CODE' ) {
+            $cmd->run();
+        }
+        else {
             system($cmd) && confess "$cmd failed";
         }
     }
 }
 
 # this's a simpler version compared to shipwright's source part, only
-# dir, svn and svk are supported currently.
+# dir, svn, svk and git are supported currently.
 # warn: dist in svn and svk must be a dir instead of a compressed file.
 
 sub cmd {
     my ( $name, $source ) = @_;
 
     if ( $source =~ s/^dir(ectory)?://i ) {
-        return "cp -r $source tmp_dists/$name";
+        return sub { rcopy( $source, catdir( 'tmp_dists', $name ) ); };
     }
     elsif ( $source =~ /^svn:/i ) {
         $source =~ s{^svn:(?!//)}{}i;
@@ -833,6 +847,10 @@ sub cmd {
         $source =~ s/^svk://i;
         return "svk co $source tmp_dists/$name";
     }
+    elsif ( $source =~ m{^git:}i ) {
+        $source =~ s{^git:(?!//)}{}i;
+        return "git clone $source tmp_dists/$name";
+    }
 
     return;
 }
@@ -841,5 +859,9 @@ sub _record {
     my $dist = shift;
     push @{ $installed->[0] }, $dist;
     $installed->write($installed_file);
+}
+
+sub is_on_windows {
+    return $^O =~ /MSWin/;
 }
 

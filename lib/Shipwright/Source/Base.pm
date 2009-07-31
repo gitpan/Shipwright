@@ -9,6 +9,7 @@ use Module::CoreList;
 use Shipwright::Source;
 use Shipwright::Util;
 use Cwd qw/getcwd/;
+use File::Copy::Recursive qw/rcopy/;
 
 use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
@@ -336,8 +337,7 @@ EOF
                   or confess "can't read prereqs: $!";
                 eval $prereqs or confess "eval error: $@";    ## no critic
 
-                Shipwright::Util->run( [ 'rm', 'shipwright_makefile.pl' ] );
-                Shipwright::Util->run( [ 'rm', 'shipwright_prereqs' ] );
+                unlink 'shipwright_makefile.pl', 'shipwright_prereqs';
             }
             else {
 
@@ -365,8 +365,9 @@ EOF
                 }
 
             }
-            Shipwright::Util->run( [ 'make', 'clean' ] );
-            Shipwright::Util->run( [ 'rm',   'Makefile.old' ] );
+            Shipwright::Util->run(
+                [ $ENV{SHIPWRIGHT_MAKE}, 'clean' ] );
+            unlink 'Makefile.old';
         }
 
         for my $type ( @types ) {
@@ -597,14 +598,15 @@ sub _copy {
     my %file = @_;
     for ( keys %file ) {
         if ( $file{$_} ) {
-            my $cmd = [
-                'cp',
-                $file{$_},
-                catfile(
-                    $self->directory,
-                    $self->name || $self->just_name( $self->path ), $_
-                )
-            ];
+            my $cmd = sub {
+                rcopy(
+                    $file{$_},
+                    catfile(
+                        $self->directory,
+                        $self->name || $self->just_name( $self->path ), $_
+                    )
+                );
+            };
             Shipwright::Util->run($cmd);
         }
     }
