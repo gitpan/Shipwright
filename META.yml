@@ -33,6 +33,7 @@ requires:
   File::Compare: 0
   File::Copy: 0
   File::Copy::Recursive: 0
+  File::Path: 2
   File::Slurp: 0
   File::Spec: 0
   File::Temp: 0
@@ -52,4 +53,5 @@ requires:
   version: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 2.003003
+  repository: git://github.com/bestpractical/shipwright.git
+version: 2.003004

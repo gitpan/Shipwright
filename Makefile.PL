@@ -34,6 +34,7 @@ requires 'IO::Uncompress::RawInflate' => '2.012';
 requires 'Archive::Tar' => 0;
 requires 'Archive::Extract' => 0;
 requires 'File::Compare' => 0;
+requires 'File::Path' => 2;
 
 
 if ( can_cc() ) {
