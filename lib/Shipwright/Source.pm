@@ -4,28 +4,10 @@ use warnings;
 use strict;
 use Carp;
 use UNIVERSAL::require;
-use Hash::Merge qw/merge/;
 use File::Temp qw/tempdir/;
 use File::Spec::Functions qw/catfile catdir/;
 use Shipwright::Util;
-
-Hash::Merge::set_behavior('RIGHT_PRECEDENT');
-
-our %DEFAULT = ( follow => 1, );
-
-$DEFAULT{directory} =
-  tempdir( 'shipwright_source_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
-$DEFAULT{scripts_directory}  = catdir( $DEFAULT{directory}, '__scripts' );
-$DEFAULT{download_directory} = catdir( $DEFAULT{directory}, '__download' );
-$DEFAULT{map_path}           = catfile( $DEFAULT{directory}, 'map.yml' );
-$DEFAULT{url_path}           = catfile( $DEFAULT{directory}, 'url.yml' );
-$DEFAULT{version_path}       = catfile( $DEFAULT{directory}, 'version.yml' );
-$DEFAULT{branches_path}      = catfile( $DEFAULT{directory}, 'branches.yml' );
-
-for (qw/map_path url_path version_path branches_path/) {
-    open my $fh, '>', $DEFAULT{$_} or confess "can't write to $DEFAULT{$_}: $!";
-    close $fh;
-}
+use File::Path qw/make_path/;
 
 =head1 NAME
 
@@ -43,12 +25,30 @@ Shipwright::Source - Source
 
 sub new {
     my $class = shift;
-    my %args = %{ merge( \%DEFAULT, {@_} ) };
+    my %args = (
+        follow => 1,
+        directory =>
+          tempdir( 'shipwright_source_XXXXXX', CLEANUP => 1, TMPDIR => 1 ),
+        @_,
+    );
+
+    $args{scripts_directory} ||= catdir( $args{directory}, '__scripts' );
+    $args{download_directory} ||=
+      catdir( Shipwright::Util->shipwright_user_root, 'downloads' );
+    $args{map_path}      ||= catfile( $args{directory}, 'map.yml' );
+    $args{url_path}      ||= catfile( $args{directory}, 'url.yml' );
+    $args{version_path}  ||= catfile( $args{directory}, 'version.yml' );
+    $args{branches_path} ||= catfile( $args{directory}, 'branches.yml' );
+
+    for (qw/map_path url_path version_path branches_path/) {
+        open my $fh, '>', $args{$_} or confess "can't write to $args{$_}: $!";
+        close $fh;
+    }
 
     croak "need source arg" unless exists $args{source};
 
     for my $dir (qw/directory download_directory scripts_directory/) {
-        mkdir $args{$dir} unless -e $args{$dir};
+        make_path( $args{$dir} ) unless -e $args{$dir};
     }
 
     my $type = type( \$args{source} );
@@ -67,7 +67,8 @@ sub new {
 sub type {
     my $source = shift;
 
-    _translate_source( $source );
+    _translate_source($source);
+
     # prefix that can't be omitted
     if ( $$source =~ /^file:.*\.(tar\.gz|tgz|tar\.bz2)$/ ) {
         $$source =~ s/^file://i;

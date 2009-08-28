@@ -48,30 +48,19 @@ sub initialize {
     chdir $path;
     Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, '--bare', 'init' ] );
 
-    rcopy( $dir, $self->cloned_dir )
+    $self->_initialize_local_dir;
+    rcopy( $dir, $self->local_dir )
       or confess "can't copy $dir to " . $path . ": $!";
     $self->commit( comment => 'create project' );
     chdir $cwd;
 }
 
-=item cloned_dir
-
-since nearly all the time we need to clone first to use git, it's good that
-we keep a cloned dir.
-this returns the cloned_dir, will also clone if it's not cloned yet
-
-=cut
-
-my $cloned_dir;
-
-sub cloned_dir {
+sub _initialize_local_dir {
     my $self = shift;
-    return $cloned_dir if $cloned_dir;
+    # the 0 is very important, or it may results in recursion
+    my $target = $self->local_dir( 0 ); 
+    remove_tree( $target ) if -e $target;
 
-    my $base_dir =
-      tempdir( 'shipwright_backend_git_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
-
-    my $target = catdir( $base_dir, 'clone' );
     Shipwright::Util->run(
         [ $ENV{'SHIPWRIGHT_GIT'}, 'clone', $self->repository, $target ] );
     my $cwd = getcwd;
@@ -80,7 +69,7 @@ sub cloned_dir {
     Shipwright::Util->run(
         [ $ENV{'SHIPWRIGHT_GIT'}, 'config', 'push.default', 'matching' ] );
     chdir $cwd;
-    return $cloned_dir = $target;
+    return $target;
 }
 
 =item check_repository
@@ -113,7 +102,7 @@ sub check_repository {
 =item fs_backend
 
 git's local clone is nearly the same as a fs backend, this returns
-a Shipwright::Backend::FS object which reflects the cloned_dir repository.
+a Shipwright::Backend::FS object which reflects the local_dir repository.
 
 =cut
 
@@ -121,9 +110,9 @@ sub fs_backend {
     my $self = shift;
     return $self->{fs_backend} if $self->{fs_backend};
     # XXX TODO not a great place to clone, need refactor
-    my $cloned_dir = $self->cloned_dir;
+    my $local_dir = $self->local_dir;
     $self->{fs_backend} = Shipwright::Backend::FS->new(
-        repository => $self->cloned_dir,
+        repository => $self->local_dir,
     );
     return $self->{fs_backend};
 }
@@ -186,9 +175,9 @@ sub commit {
     my %args =
       ( comment => 'comment', @_ );    # git doesn't allow comment to be blank
 
-    if ( $self->cloned_dir ) {
+    if ( $self->local_dir ) {
         my $cwd = getcwd;
-        chdir $self->cloned_dir or return;
+        chdir $self->local_dir or return;
 
         Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_GIT'}, 'add', '-f', '.' ] );
 

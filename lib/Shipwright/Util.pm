@@ -5,7 +5,6 @@ use strict;
 use Carp;
 use IPC::Run3;
 use File::Spec::Functions qw/catfile catdir splitpath splitdir tmpdir rel2abs/;
-use File::Temp qw/tempfile/;
 use Cwd qw/abs_path/;
 
 use Shipwright;    # we need this to find where Shipwright.pm lives
@@ -159,23 +158,23 @@ open $null_fh, '>', '/dev/null';
 $cpan_log_path = catfile( tmpdir(), 'shipwright_cpan.log');
 
 open $cpan_fh, '>>', $cpan_log_path;
-$stdout_fh = select;
+$stdout_fh = CORE::select();
 
 sub select {
     my $self = shift;
     my $type = shift;
 
     if ( $type eq 'null' ) {
-        select $null_fh;
+        CORE::select $null_fh;
     }
     elsif ( $type eq 'stdout' ) {
-        select $stdout_fh;
+        CORE::select $stdout_fh;
     }
     elsif ( $type eq 'cpan' ) {
         warn "CPAN related output will be at $cpan_log_path\n"
           unless $cpan_fh_flag;
         $cpan_fh_flag = 1;
-        select $cpan_fh;
+        CORE::select $cpan_fh;
     }
     else {
         confess "unknown type: $type";
@@ -189,7 +188,27 @@ return current user's home directory
 =cut
 
 sub user_home {
-    return (getpwuid $<)[7];
+    return $ENV{HOME} if $ENV{HOME};
+
+    my $home = eval { (getpwuid $<)[7] };
+    if ( $@ ) {
+        confess "can't find user's home, please set it by env HOME";    
+    }
+    else {
+        return $home;
+    }
+}
+
+=head2 shipwright_user_root
+
+the user's own shipwright root where we put internal files in.
+it's ~/.shipwright by default.
+it can be overwritten by $ENV{SHIPWRIGHT_USER_ROOT}
+
+=cut
+
+sub shipwright_user_root {
+    return $ENV{SHIPWRIGHT_USER_ROOT} || catdir( user_home, '.shipwright' );
 }
 
 1;

@@ -176,7 +176,7 @@ sub import {
                 && not $args{overwrite} )
             {
                 $self->log->warn(
-"path scripts/$name alreay exists, need to set overwrite arg to overwrite"
+"path /scripts/$name alreay exists, need to set overwrite arg to overwrite"
                 );
             }
             else {
@@ -666,7 +666,7 @@ sub requires {
     my %args = @_;
     my $name = $args{name};
 
-    return $self->_yml( catfile( 'scripts', $name, 'require.yml' ) );
+    return $self->_yml( "/scripts/$name/require.yml" );
 }
 
 =item check_repository
@@ -866,7 +866,38 @@ sub has_branch_support {
     return;
 }
 
-*_cmd = *_update_file = *_update_dir = *_subclass_method;
+*_initialize_local_dir = *_cmd = *_update_file = *_update_dir =
+  *_subclass_method;
+
+=item local_dir
+
+for vcs backend, we made a local checkout/clone version, which will live here
+
+=cut
+
+sub local_dir {
+    my $self      = shift;
+    my $need_init = shift;
+    my $base_dir =
+      catdir( Shipwright::Util->shipwright_user_root(), 'backends' );
+    make_path( $base_dir ) unless -e $base_dir;
+    my $repo = $self->repository;
+    $repo =~ s/:/-/g;
+    $repo =~ s![/\\]!_!g;
+    my $target = catdir( $base_dir, $repo );
+
+# if explicitly defined $need_init, we should do exactly what it asks
+# else, if the $target is not existed yet, we do the init thing
+    if ( defined $need_init ) {
+        if ( $need_init ) {
+            $self->_initialize_local_dir;
+        }
+    }
+    elsif ( !-e $target ) {
+        $self->_initialize_local_dir;
+    }
+    return $target;
+}
 
 =back
 

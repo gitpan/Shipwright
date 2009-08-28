@@ -58,7 +58,8 @@ sub new {
 
         # be careful, if you use minicpan, then the source won't be copied to
         # $CPAN::Config->{keep_source_where}
-        $CPAN::Config->{keep_source_where} = catdir( $cpan_dir, 'sources' );
+        $CPAN::Config->{keep_source_where} =
+          catdir( $self->download_directory, 'cpan' );
         $CPAN::Config->{prefs_dir}         = catdir( $cpan_dir, 'prefs' );
         $CPAN::Config->{prerequisites_policy} = 'follow';
         unless ( $CPAN::Config->{urllist} && @{ $CPAN::Config->{urllist} } ) {
@@ -172,8 +173,15 @@ sub _run {
     $self->name( 'cpan-' . $name );
     $self->_update_map( $self->source, 'cpan-' . $name );
 
-    $self->source($distribution->get_file_onto_local_disk);
+    my ($file) = catfile( $CPAN::Config->{keep_source_where},
+        "authors", "id", split /\//, $distribution->id );
 
+    if ( -e $file && -s $file ) {
+        $self->source($file);
+    }
+    else {
+        $self->source($distribution->get_file_onto_local_disk);
+    }
     return 1;
 }
 
