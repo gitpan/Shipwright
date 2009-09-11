@@ -15,7 +15,13 @@ Shipwright::Source - Source
 
 =head1 SYNOPSIS
 
+    shipwright import -r ... cpan:XML::LibXML
+
     use Shipwright::Source;
+
+=head1 SUPPORTED SOURCES
+
+Currently, the supported sources are L<CPAN|Shipwright::SOURCE::CPAN>, L<Compressed|Shipwright::SOURCE::Compressed>, L<Directory|Shipwright::SOURCE::Directory>, L<FTP|Shipwright::SOURCE::FTP>, L<Git|Shipwright::SOURCE::Git>, L<HTTP|Shipwright::SOURCE::HTTP>, L<SVK|Shipwright::SOURCE::SVK>, L<SVN|Shipwright::SOURCE::SVN> and L<Shipwright|Shipwright::SOURCE::Shipwright>.
 
 =head1 METHODS
 
@@ -23,24 +29,28 @@ Shipwright::Source - Source
 
 =cut
 
+$ENV{SHIPWRIGHT_SOURCE_ROOT} ||=
+  tempdir( 'shipwright_source_XXXXXX', CLEANUP => 1, TMPDIR => 1 );
+
 sub new {
     my $class = shift;
     my %args = (
         follow => 1,
-        directory =>
-          tempdir( 'shipwright_source_XXXXXX', CLEANUP => 1, TMPDIR => 1 ),
+        directory => $ENV{SHIPWRIGHT_SOURCE_ROOT},
         @_,
     );
 
-    $args{scripts_directory} ||= catdir( $args{directory}, '__scripts' );
     $args{download_directory} ||=
       catdir( Shipwright::Util->shipwright_user_root, 'downloads' );
+
+    $args{scripts_directory} ||= catdir( $args{directory}, '__scripts' );
     $args{map_path}      ||= catfile( $args{directory}, 'map.yml' );
     $args{url_path}      ||= catfile( $args{directory}, 'url.yml' );
     $args{version_path}  ||= catfile( $args{directory}, 'version.yml' );
     $args{branches_path} ||= catfile( $args{directory}, 'branches.yml' );
 
     for (qw/map_path url_path version_path branches_path/) {
+        next if -e $args{$_};
         open my $fh, '>', $args{$_} or confess "can't write to $args{$_}: $!";
         close $fh;
     }

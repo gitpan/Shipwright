@@ -19,7 +19,6 @@ requires 'File::Copy' => 0;
 requires 'File::Copy::Recursive' => 0;
 requires 'File::Spec' => 0;
 requires 'File::Slurp' => 0;
-requires 'Hash::Merge' => 0;
 requires 'IPC::Run3' => 0;
 requires 'List::MoreUtils' => 0;
 requires 'Log::Log4perl' => 0;
@@ -35,15 +34,6 @@ requires 'Archive::Tar' => 0;
 requires 'Archive::Extract' => 0;
 requires 'File::Compare' => 0;
 requires 'File::Path' => 2.07;
-
-
-if ( can_cc() ) {
-    requires( 'YAML::Syck' => 0.71 );
-}
-else {
-    requires( 'YAML' => 0.35 ) unless can_use( 'YAML::Syck' => 0.71 );
-}
-
 
 no_index( directory => 't' );
 no_index( directory => 'xt' );
