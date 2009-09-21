@@ -35,10 +35,13 @@ the constructor
 =cut
 
 sub new {
-    my $class = shift;
-    my $self  = {@_};
+    my $proto = shift;
+    my $self = bless {@_}, ref $proto || $proto;
+    return $self->build;
+}
 
-    bless $self, $class;
+sub build {
+    my $self = shift;
     $self->log( Log::Log4perl->get_logger( ref $self ) );
     return $self;
 }
@@ -907,6 +910,14 @@ sub local_dir {
         $self->_initialize_local_dir;
     }
     return $target;
+}
+
+sub strip_repository {
+    my $self = shift;
+    my $repo = $self->repository;
+    $repo =~ s/^[a-z+]+://;
+    $self->repository($repo);
+    return;
 }
 
 =back

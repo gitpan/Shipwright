@@ -101,6 +101,7 @@ sub _follow {
         chdir catdir($path);
 
         if ( $path =~ /\bcpan-Bundle-(.*)/ ) {
+            $self->log->info("is a CPAN Bundle");
 
             my $file = $1;
             $file =~ s!-!/!;
@@ -145,6 +146,8 @@ sub _follow {
 
         }
         elsif ( -e 'Build.PL' ) {
+            $self->log->info("is a Module::Build based dist");
+
             Shipwright::Util->run(
                 [
                     $^X,               '-Mversion',
@@ -170,6 +173,7 @@ sub _follow {
               or confess "can't read Makefile.PL: $!";
 
             if ( $makefile =~ /inc::Module::Install/ ) {
+                $self->log->info("is a Module::Install based dist");
 
   # PREREQ_PM in Makefile is not good enough for inc::Module::Install, which
   # will omit features(..). we'll put deps in features(...) into recommends part
@@ -407,6 +411,7 @@ EOF
                     && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} )
                     && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} ) <= $self->min_perl_version)
                 {
+                    $self->log->info("$module is skipped becasue it's in core");
                     delete $require->{$type}{$module};
                     next;
                 }
@@ -414,6 +419,8 @@ EOF
                 my $name = $module;
 
                 if ( $self->_is_skipped($module) ) {
+                    # skipped contains all modules imported before,
+                    # so we need to check if they are imported ones
                     unless ( defined $map->{$module}
                         || defined $url->{$module} )
                     {
@@ -585,8 +592,9 @@ sub _is_skipped {
             $skip = 1
               if $self->skip->{$name} || $self->skip->{$name_without_prefix};
         }
+
         if ($skip) {
-            $self->log->warn("$module is skipped");
+            $self->log->info("$module is skipped");
             return 1;
         }
     }
@@ -667,7 +675,7 @@ sub _lwp_get {
     my $source = shift;
     require LWP::UserAgent;
     my $ua = LWP::UserAgent->new;
-    $ua->timeout( $ENV{SHIPWRIHGT_LWP_TIMEOUT} )
+    $ua->timeout( $ENV{SHIPWRIGHT_LWP_TIMEOUT} )
       if $ENV{SHIPWRIGHT_LWP_TIMEOUT};
 
     if ( -e $self->source ) {
