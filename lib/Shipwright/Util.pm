@@ -5,7 +5,7 @@ use strict;
 use Carp;
 use IPC::Run3;
 use File::Spec::Functions qw/catfile catdir splitpath splitdir tmpdir rel2abs/;
-use Cwd qw/abs_path/;
+use Cwd qw/abs_path getcwd/;
 
 use Shipwright;    # we need this to find where Shipwright.pm lives
 use YAML::Tiny;
@@ -67,10 +67,15 @@ sub run {
         $log->error(
             'failed to run ' . join( ' ', @$cmd ) . " with exit number $?" );
         unless ($ignore_failure) {
+	    $out = "\n$out" if length $out;
+	    $err = "\n$err" if length $err;
+            my $cwd = getcwd;
             confess <<"EOF";
-something wrong when execute @$cmd: $?
-the output is: $out
-the error is: $err
+command failed: @$cmd
+\$?: $?
+cwd: $cwd
+stdout was: $out
+stderr was: $err
 EOF
         }
     }
@@ -147,7 +152,7 @@ sub find_module {
                 if lc $name eq lc $module;
         }
     }
-    return undef;
+    return;
 }
 
 =head2 PATHS

@@ -424,7 +424,7 @@ Shipwright::Script::Import - Import sources and their dependencies
 
 =head1 SYNOPSIS
 
- import SOURCE [NAME]
+ import SOURCE [ SOURCE ] ...
 
 =head1 OPTIONS
 
@@ -513,6 +513,15 @@ e.g. L<svk://public/foo-1.23> L<svk:/local/foo-1.23>
 
 e.g. L<svn:file:///home/public/foo-1.23>
 L<svn:http://svn.example.com/foo-1.23>
+
+=item Git
+
+e.g. L<git:file:///opt/foo.git>
+L<git://github.com/bestpractical/shipwright.git>
+
+=item Shipwright
+
+e.g. L<shipwright:fs:/opt/fs/foo>
 
 =back
 
