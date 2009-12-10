@@ -67,6 +67,7 @@ sub initialize {
         _initialize => 1,
         comment     => 'created project',
     );
+    $self->_initialize_local_dir();
 
 }
 
@@ -89,7 +90,7 @@ sub _cmd {
     $args{comment} ||= '';
 
     for ( @{ $REQUIRE_OPTIONS{$type} } ) {
-        croak "$type need option $_" unless $args{$_};
+        confess "$type need option $_" unless $args{$_};
     }
 
     my @cmd;
@@ -181,7 +182,7 @@ sub _cmd {
         @cmd = [ $ENV{'SHIPWRIGHT_SVN'}, 'cat', $self->repository . $args{path} ];
     }
     else {
-        croak "invalid command: $type";
+        confess "invalid command: $type";
     }
 
     return @cmd;

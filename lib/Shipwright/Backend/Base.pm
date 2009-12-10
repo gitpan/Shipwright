@@ -37,7 +37,7 @@ the constructor
 sub new {
     my $proto = shift;
     my $self = bless {@_}, ref $proto || $proto;
-    return $self->build;
+    return $self->build(@_);
 }
 
 =item build
@@ -719,7 +719,7 @@ sub update {
     my $self = shift;
     my %args = @_;
 
-    croak "need path option" unless $args{path};
+    confess "need path option" unless $args{path};
 
     if ( $args{path} =~ m{/$} ) {
         # it's a directory
@@ -740,7 +740,7 @@ sub update {
     }
     else {
 
-        croak "$args{path} seems not shipwright's own file"
+        confess "$args{path} seems not shipwright's own file"
           unless -e catfile( Shipwright::Util->share_root, $args{path} );
 
         return $self->_update_file( $args{path},
@@ -902,18 +902,8 @@ sub local_dir {
     $repo =~ s/:/-/g;
     $repo =~ s![/\\]!_!g;
     my $target = catdir( $base_dir, $repo );
-
-# if explicitly defined $need_init, we should do exactly what it asks
-# else, if the $target is not existed yet, we do the init thing
-    if ( defined $need_init ) {
-        if ( $need_init ) {
-            $self->_initialize_local_dir;
-        }
-    }
-    elsif ( !-e $target ) {
-        $self->_initialize_local_dir;
-    }
     return $target;
+
 }
 
 =item strip_repository
