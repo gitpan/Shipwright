@@ -407,9 +407,11 @@ EOF
                     next;
                 }
 
+                my $version = $require->{$type}{$module}{version};
+                $version =~ s!^\D+!!; # some may contain '>' or '>=' 
                 if ( !$self->include_dual_lifed 
-                    && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} )
-                    && Module::CoreList->first_release( $module, $require->{$type}{$module}{version} ) <= $self->min_perl_version)
+                    && Module::CoreList->first_release( $module, $version )
+                    && Module::CoreList->first_release( $module, $version ) <= $self->min_perl_version)
                 {
                     $self->log->info("$module is skipped becasue it's in core");
                     delete $require->{$type}{$module};
@@ -710,7 +712,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

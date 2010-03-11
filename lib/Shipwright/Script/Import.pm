@@ -158,7 +158,7 @@ sub run {
               Shipwright::Util::LoadFile( $shipwright->source->version_path );
             my $name = ( splitdir( $source ) )[-1];
 
-            my $base = $self->_parent_dir($source);
+            my $base = Shipwright::Util->parent_dir($source);
 
             my $script_dir;
             if ( -e catdir( $base, '__scripts', $name ) ) {
@@ -259,7 +259,7 @@ sub _import_req {
     $require_file = catfile( $script_dir, 'require.yml' )
       unless -e catfile( $source, '__require.yml' );
 
-    my $dir = $self->_parent_dir($source);
+    my $dir = Shipwright::Util->parent_dir($source);
 
     my $map_file = catfile( $dir, 'map.yml' );
 
@@ -404,16 +404,6 @@ EOF
     close $fh;
 }
 
-# _parent_dir: return parent dir
-
-sub _parent_dir {
-    my $self   = shift;
-    my $source = shift;
-    my @dirs   = splitdir($source);
-    pop @dirs;
-    return catdir(@dirs);
-}
-
 1;
 
 __END__
@@ -447,6 +437,8 @@ Shipwright::Script::Import - Import sources and their dependencies
  --overwrite                    : import dependency dists anyway even if they
                                   are already in the repository
  --version                      : specify the source's version
+ --skip                         : specify a list of modules/dist names of
+                                  which we don't want to import
  --skip-recommends              : specify a list of modules/dist names of
                                   which recommends we don't want to import
  --skip-all-recommends          : skip all the recommends to import
@@ -531,7 +523,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

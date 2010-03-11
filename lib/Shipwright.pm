@@ -2,7 +2,7 @@ package Shipwright;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('2.4.4');
+use version; our $VERSION = qv('2.4.5');
 
 use base qw/Class::Accessor::Fast/;
 
@@ -274,7 +274,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2009 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
