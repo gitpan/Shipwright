@@ -2,7 +2,7 @@ package Shipwright;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('2.4.7');
+use version; our $VERSION = qv('2.4.8');
 
 use base qw/Class::Accessor::Fast/;
 
@@ -12,7 +12,8 @@ use Shipwright::Logger;
 use Shipwright::Util;
 use File::Spec::Functions qw/catfile tmpdir/;
 
-$ENV{SHIPWRIGHT_MAKE} ||= 'make';
+# strawberry perl's build make is 'dmake'
+$ENV{SHIPWRIGHT_MAKE} ||= $^O =~ /MSWin/ ? 'dmake' : 'make';
 $ENV{SHIPWRIGHT_SVK} ||= 'svk';
 $ENV{SHIPWRIGHT_SVN} ||= 'svn';
 $ENV{SHIPWRIGHT_GIT} ||= 'git';
