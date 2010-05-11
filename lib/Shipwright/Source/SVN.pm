@@ -2,7 +2,7 @@ package Shipwright::Source::SVN;
 
 use warnings;
 use strict;
-use Carp;
+use Shipwright::Util;
 use File::Spec::Functions qw/catdir/;
 use File::Path qw/remove_tree/;
 
@@ -59,7 +59,7 @@ sub _run {
 
     unless ( $self->version ) {
         my ($out) =
-          Shipwright::Util->run( [ $ENV{'SHIPWRIGHT_SVN'}, 'info', $source, ] );
+          run_cmd( [ $ENV{'SHIPWRIGHT_SVN'}, 'info', $source, ] );
 
         if ( $out =~ /^Revision: (\d+)/m ) {
             $self->version($1);
@@ -68,7 +68,7 @@ sub _run {
 
     remove_tree($path) if -e $path;
     $self->source( $path );
-    Shipwright::Util->run($cmd);
+    run_cmd($cmd);
 }
 
 1;

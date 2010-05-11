@@ -2,7 +2,7 @@ package Shipwright::Source::Git;
 
 use warnings;
 use strict;
-use Carp;
+use Shipwright::Util;
 use File::Spec::Functions qw/catdir/;
 use File::Path qw/remove_tree/;
 use File::Copy::Recursive qw/rcopy/;
@@ -65,7 +65,7 @@ sub _run {
         @cmds = sub {
             my $cwd = getcwd();
             chdir $cloned_path;
-            Shipwright::Util->run(
+            run_cmd(
                 [ $ENV{'SHIPWRIGHT_GIT'}, 'pull' ] );
             chdir $cwd;
         };
@@ -80,11 +80,11 @@ sub _run {
         my $cwd = getcwd();
         chdir $cloned_path;
         if ( $self->version ) {
-            Shipwright::Util->run(
+            run_cmd(
                 [ $ENV{'SHIPWRIGHT_GIT'}, 'checkout', $self->version ] );
         }
         else {
-            my ($out) = Shipwright::Util->run(
+            my ($out) = run_cmd(
                 [ $ENV{'SHIPWRIGHT_GIT'}, 'log' ] );
             if ( $out =~ /^commit\s+(\w+)/m ) {
                 $self->version($1);
@@ -92,12 +92,12 @@ sub _run {
         }
         chdir $cwd;
         remove_tree( $path ) if -e $path;
-        rcopy( $cloned_path, $path ) or confess $!;
+        rcopy( $cloned_path, $path ) or confess_or_die $!;
         remove_tree( catdir( $path, '.git' ) );
     };
 
     $self->source( $path );
-    Shipwright::Util->run($_) for @cmds;
+    run_cmd($_) for @cmds;
 }
 
 1;

@@ -2,7 +2,6 @@ package Shipwright::Script::Import;
 
 use strict;
 use warnings;
-use Carp;
 
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
@@ -46,7 +45,7 @@ sub run {
     my @sources = @_;
     my $source;
     $source = $sources[0];
-    confess "--name and --as args are not supported when importing multiple sources"
+    confess_or_die "--name and --as args are not supported when importing multiple sources"
       if @sources > 1 && $self->name;
 
     if ( $self->min_perl_version ) {
@@ -79,7 +78,7 @@ sub run {
         @sources = $source;
     }
 
-    confess "we need source arg\n" unless $source;
+    confess_or_die "we need source arg\n" unless $source;
 
     if ( $self->extra_tests ) {
 
@@ -108,7 +107,7 @@ sub run {
                 $self->name($name);
             }
             if ( $self->name !~ /^[-.\w]+$/ ) {
-                confess
+                confess_or_die
                   qq{name can only have alphanumeric characters, "." and "-"\n};
             }
         }
@@ -127,7 +126,7 @@ sub run {
                 skip_all_recommends => $self->skip_all_recommends,
             );
 
-            confess "cpan dists can't be branched"
+            confess_or_die "cpan dists can't be branched"
               if $shipwright->source->isa('Shipwright::Source::CPAN')
                   && $self->as;
 
@@ -139,12 +138,12 @@ sub run {
                 );
             }
 
-            Shipwright::Util::DumpFile(
+            dump_yaml_file(
                 $shipwright->source->map_path,
                 $shipwright->backend->map || {},
             );
 
-            Shipwright::Util::DumpFile(
+            dump_yaml_file(
                 $shipwright->source->url_path,
                 $shipwright->backend->source || {},
             );
@@ -155,10 +154,10 @@ sub run {
             next unless $source; # if running the source returned undef, we should skip
 
             $version =
-              Shipwright::Util::LoadFile( $shipwright->source->version_path );
+              load_yaml_file( $shipwright->source->version_path );
             my $name = ( splitdir( $source ) )[-1];
 
-            my $base = Shipwright::Util->parent_dir($source);
+            my $base = parent_dir($source);
 
             my $script_dir;
             if ( -e catdir( $base, '__scripts', $name ) ) {
@@ -185,7 +184,7 @@ sub run {
 
             if ( $self->no_follow ) {
                 open my $fh, '>', catfile( $script_dir, 'require.yml' ) or
-                    confess "can't write to $script_dir/require.yml: $!\n";
+                    confess_or_die "can't write to $script_dir/require.yml: $!\n";
                 print $fh "---\n";
                 close $fh;
             }
@@ -196,12 +195,12 @@ sub run {
                     move(
                         catfile( $source,     '__require.yml' ),
                         catfile( $script_dir, 'require.yml' )
-                    ) or confess "move __require.yml failed: $!\n";
+                    ) or confess_or_die "move __require.yml failed: $!\n";
                 }
             }
 
             my $branches =
-              Shipwright::Util::LoadFile( $shipwright->source->branches_path );
+              load_yaml_file( $shipwright->source->branches_path );
 
             $self->log->fatal( "importing $name" );
             $shipwright->backend->import(
@@ -224,13 +223,13 @@ sub run {
 
             # merge new map into map.yml in repo
             my $new_map =
-              Shipwright::Util::LoadFile( $shipwright->source->map_path )
+              load_yaml_file( $shipwright->source->map_path )
               || {};
             $shipwright->backend->map(
                 { %{ $shipwright->backend->map || {} }, %$new_map } );
 
             my $new_url =
-              Shipwright::Util::LoadFile( $shipwright->source->url_path )
+              load_yaml_file( $shipwright->source->url_path )
               || {};
             my $source_url = delete $new_url->{$name};
 
@@ -259,16 +258,16 @@ sub _import_req {
     $require_file = catfile( $script_dir, 'require.yml' )
       unless -e catfile( $source, '__require.yml' );
 
-    my $dir = Shipwright::Util->parent_dir($source);
+    my $dir = parent_dir($source);
 
     my $map_file = catfile( $dir, 'map.yml' );
 
     if ( -e $require_file ) {
-        my $req = Shipwright::Util::LoadFile($require_file);
+        my $req = load_yaml_file($require_file);
         my $map = {};
 
         if ( -e $map_file ) {
-            $map = Shipwright::Util::LoadFile($map_file);
+            $map = load_yaml_file($map_file);
 
         }
 
@@ -308,7 +307,7 @@ sub _import_req {
                             move(
                                 catfile( $s,          '__require.yml' ),
                                 catfile( $script_dir, 'require.yml' )
-                            ) or confess "move $s/__require.yml failed: $!\n";
+                            ) or confess_or_die "move $s/__require.yml failed: $!\n";
                         }
 
                         $self->_generate_build( $s, $script_dir, $shipwright );
@@ -316,7 +315,7 @@ sub _import_req {
 
                     $self->_import_req( $s, $shipwright, $script_dir );
 
-                    my $branches = Shipwright::Util::LoadFile(
+                    my $branches = load_yaml_file(
                         $shipwright->source->branches_path );
                     $shipwright->backend->import(
                         comment   => 'deps for ' . $source,
@@ -399,7 +398,7 @@ EOF
         );
     }
 
-    open my $fh, '>', catfile( $script_dir, 'build' ) or confess $@;
+    open my $fh, '>', catfile( $script_dir, 'build' ) or confess_or_die $@;
     print $fh $_, "\n" for @commands;
     close $fh;
 }

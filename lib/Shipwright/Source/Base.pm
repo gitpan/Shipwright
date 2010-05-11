@@ -2,7 +2,6 @@ package Shipwright::Source::Base;
 
 use warnings;
 use strict;
-use Carp;
 use File::Spec::Functions qw/catfile catdir/;
 use File::Slurp;
 use Module::CoreList;
@@ -51,7 +50,7 @@ sub run {
             $_->();
         }
         else {
-            Shipwright::Util->run($_);
+            run_cmd($_);
         }
     }
     $self->_copy( %{ $args{copy} } ) if $args{copy};
@@ -78,11 +77,11 @@ sub _follow {
     }
 
     if ( -e $self->map_path ) {
-        $map = Shipwright::Util::LoadFile( $self->map_path );
+        $map = load_yaml_file( $self->map_path );
     }
 
     if ( -e $self->url_path ) {
-        $url = Shipwright::Util::LoadFile( $self->url_path );
+        $url = load_yaml_file( $self->url_path );
     }
 
     my @types = qw/requires build_requires/;
@@ -108,7 +107,7 @@ sub _follow {
             $file .= '.pm';
 
             # so it's a bundle module
-            open my $fh, '<', 'MANIFEST' or confess "no manifest found: $!";
+            open my $fh, '<', 'MANIFEST' or confess_or_die "no manifest found: $!";
             while (<$fh>) {
                 chomp;
                 if (/$file/) {
@@ -116,7 +115,7 @@ sub _follow {
                     last;
                 }
             }
-            open $fh, '<', $file or confess "can't open $file: $!";
+            open $fh, '<', $file or confess_or_die "can't open $file: $!";
             my $flip;
             while (<$fh>) {
                 chomp;
@@ -148,29 +147,29 @@ sub _follow {
         elsif ( -e 'Build.PL' ) {
             $self->log->info("is a Module::Build based dist");
 
-            Shipwright::Util->run(
+            run_cmd(
                 [
                     $^X,               '-Mversion',
-                    '-MModule::Build', '-MShipwright::Util::CleanINC',
+                    '-MModule::Build', '-MCleanINC',
                     'Build.PL'
                 ],
                 1, # don't die if this fails
             );
-            Shipwright::Util->run( [ $^X, 'Build.PL' ] ) if $? || !-e 'Build';
+            run_cmd( [ $^X, 'Build.PL' ] ) if $? || !-e 'Build';
             my $source = read_file( catfile( '_build', 'prereqs' ) )
-              or confess "can't read _build/prereqs: $!";
+              or confess_or_die "can't read _build/prereqs: $!";
             my $eval = '$require = ' . $source;
-            eval "$eval;1" or confess "eval error: $@";    ## no critic
+            eval "$eval;1" or confess_or_die "eval error: $@";    ## no critic
 
             $source = read_file( catfile('Build.PL') )
-              or confess "can't read Build.PL: $!";
+              or confess_or_die "can't read Build.PL: $!";
 
-            Shipwright::Util->run(
+            run_cmd(
                 [ $^X, 'Build', 'realclean', '--allow_mb_mismatch', 1 ] );
         }
         elsif ( -e 'Makefile.PL' ) {
             my $makefile = read_file('Makefile.PL')
-              or confess "can't read Makefile.PL: $!";
+              or confess_or_die "can't read Makefile.PL: $!";
 
             if ( $makefile =~ /inc::Module::Install/ ) {
                 $self->log->info("is a Module::Install based dist");
@@ -326,26 +325,26 @@ EOF
                 $shipwright_makefile .= $makefile;
                 write_file( 'shipwright_makefile.pl', $shipwright_makefile );
 
-                Shipwright::Util->run(
+                run_cmd(
                     [
                         $^X,
                         '-Mversion',
-                        '-MShipwright::Util::CleanINC',
+                        '-MCleanINC',
                         'shipwright_makefile.pl'
                     ],
                     1, # don't die if this fails
                 );
-                Shipwright::Util->run( [ $^X, 'shipwright_makefile.pl' ] )
+                run_cmd( [ $^X, 'shipwright_makefile.pl' ] )
                   if $? || !-e 'Makefile';
                 my $prereqs = read_file( catfile('shipwright_prereqs') )
-                  or confess "can't read prereqs: $!";
-                eval "$prereqs;1;" or confess "eval error: $@"; ## no critic
+                  or confess_or_die "can't read prereqs: $!";
+                eval "$prereqs;1;" or confess_or_die "eval error: $@"; ## no critic
 
                 if ( -e 'META.yml' ) {
 
                     # if there's META.yml, let's find more about it
-                    my $meta = Shipwright::Util::LoadFile('META.yml')
-                      or confess "can't read META.yml: $!";
+                    my $meta = load_yaml_file('META.yml')
+                      or confess_or_die "can't read META.yml: $!";
                     $require ||= {};
                     $require->{requires} = {
                         %{ $meta->{requires} || {} },
@@ -368,22 +367,22 @@ EOF
             else {
 
                 # we extract the deps from Makefile
-                Shipwright::Util->run(
+                run_cmd(
                     [
                         $^X,
-                        '-MShipwright::Util::CleanINC',
+                        '-MCleanINC',
                         'Makefile.PL'
                     ],
                     1, # don't die if this fails
                 );
-                Shipwright::Util->run( [ $^X, 'Makefile.PL' ] )
+                run_cmd( [ $^X, 'Makefile.PL' ] )
                   if $? || !-e 'Makefile';
 
                 my ($source) = grep { /PREREQ_PM/ } read_file('Makefile');
                 if ( $source && $source =~ /({.*})/ ) {
                     my $eval .= '$require = ' . $1;
                     $eval =~ s/([\w:]+)=>/'$1'=>/g;
-                    eval "$eval;1" or confess "eval error: $@";    ## no critic
+                    eval "$eval;1" or confess_or_die "eval error: $@";    ## no critic
                 }
 
                 for ( keys %$require ) {
@@ -391,7 +390,7 @@ EOF
                 }
 
             }
-            Shipwright::Util->run(
+            run_cmd(
                 [ $ENV{SHIPWRIGHT_MAKE}, 'clean' ] );
             unlink 'Makefile.old';
         }
@@ -403,11 +402,11 @@ EOF
             }
         }
 
-        Shipwright::Util::DumpFile( $require_path, $require )
-          or confess "can't dump __require.yml: $!";
+        dump_yaml_file( $require_path, $require )
+          or confess_or_die "can't dump __require.yml: $!";
     }
 
-    if ( my $require = Shipwright::Util::LoadFile($require_path) ) {
+    if ( my $require = load_yaml_file($require_path) ) {
 
        # if not have 'requires' key, all the keys in $require are supposed to be
        # requires type
@@ -429,7 +428,7 @@ EOF
                     next;
                 }
 
-                my $version = $require->{$type}{$module}{version};
+                my $version = $require->{$type}{$module}{version} || 0;
                 $version =~ s!^\D+!!; # some may contain '>' or '>=' 
                 if ( !$self->include_dual_lifed 
                     && Module::CoreList->first_release( $module, $version )
@@ -463,7 +462,7 @@ EOF
 
                     #reload map
                     if ( -e $self->map_path ) {
-                        $map = Shipwright::Util::LoadFile( $self->map_path );
+                        $map = load_yaml_file( $self->map_path );
                     }
 
                     if ( $map->{$module} && $map->{$module} =~ /^cpan-/ ) {
@@ -513,7 +512,7 @@ EOF
 
                     # reload map
                     if ( -e $self->map_path ) {
-                        $map = Shipwright::Util::LoadFile( $self->map_path );
+                        $map = load_yaml_file( $self->map_path );
                     }
 
                 }
@@ -533,10 +532,10 @@ EOF
         # them when update later
         $require->{recommends} = {} if $skip_recommends;
 
-        Shipwright::Util::DumpFile( $require_path, $require );
+        dump_yaml_file( $require_path, $require );
     }
     else {
-        confess "invalid __require.yml in $path";
+        confess_or_die "invalid __require.yml in $path";
     }
 
     # go back to the cwd before we run _follow
@@ -550,12 +549,12 @@ sub _update_map {
 
     my $map = {};
     if ( -e $self->map_path ) {
-        $map = Shipwright::Util::LoadFile( $self->map_path );
+        $map = load_yaml_file( $self->map_path );
     }
     return if $map->{$module};
 
     $map->{$module} = $dist;
-    Shipwright::Util::DumpFile( $self->map_path, $map );
+    dump_yaml_file( $self->map_path, $map );
 }
 
 sub _update_url {
@@ -565,10 +564,10 @@ sub _update_url {
 
     my $map = {};
     if ( -e $self->url_path && !-z $self->url_path ) {
-        $map = Shipwright::Util::LoadFile( $self->url_path );
+        $map = load_yaml_file( $self->url_path );
     }
     $map->{$name} = $url;
-    Shipwright::Util::DumpFile( $self->url_path, $map );
+    dump_yaml_file( $self->url_path, $map );
 }
 
 sub _update_version {
@@ -578,10 +577,10 @@ sub _update_version {
 
     my $map = {};
     if ( -e $self->version_path && !-z $self->version_path ) {
-        $map = Shipwright::Util::LoadFile( $self->version_path );
+        $map = load_yaml_file( $self->version_path );
     }
     $map->{$name} = $version;
-    Shipwright::Util::DumpFile( $self->version_path, $map );
+    dump_yaml_file( $self->version_path, $map );
 }
 
 sub _update_branches {
@@ -591,10 +590,10 @@ sub _update_branches {
 
     my $map = {};
     if ( -e $self->version_path && !-z $self->branches_path ) {
-        $map = Shipwright::Util::LoadFile( $self->branches_path );
+        $map = load_yaml_file( $self->branches_path );
     }
     $map->{$name} = $branches;
-    Shipwright::Util::DumpFile( $self->branches_path, $map );
+    dump_yaml_file( $self->branches_path, $map );
 }
 
 sub _is_skipped {
@@ -639,7 +638,7 @@ sub _copy {
                     )
                 );
             };
-            Shipwright::Util->run($cmd);
+            run_cmd($cmd);
         }
     }
 }
@@ -716,11 +715,11 @@ sub _lwp_get {
 
     if ( $response->is_success ) {
         open my $fh, '>', $self->source
-          or confess "can't open file " . $self->source . ": $!";
+          or confess_or_die "can't open file " . $self->source . ": $!";
         print $fh $response->content;
     }
     else {
-        confess "failed to get $source: " . $response->status_line;
+        confess_or_die "failed to get $source: " . $response->status_line;
     }
 }
 

@@ -2,7 +2,7 @@ package Shipwright::Source::CPAN;
 
 use warnings;
 use strict;
-use Carp;
+use Shipwright::Util;
 use File::Spec::Functions qw/catfile catdir rootdir/;
 use Shipwright::Source::Compressed;
 use CPAN;
@@ -96,7 +96,7 @@ sub run {
         chdir rootdir(); #< chdir to root dir in case CPAN has chdir'd
                          #into one of the temp dirs, preventing its
                          #deletion
-        confess $error;
+        confess_or_die $error;
     } else {
             $self->log->warn("Removing source ".$self->source);
             return;
@@ -109,7 +109,7 @@ sub _run {
 
     my ( $source, $distribution );
 
-    Shipwright::Util->select('cpan');
+    select_fh('cpan');
 
     if ( $self->source =~ /\.tar\.gz$/ ) {
 
@@ -170,7 +170,7 @@ sub _run {
         return -1;
     }
 
-    Shipwright::Util->select('stdout');
+    select_fh('stdout');
 
     $self->name( 'cpan-' . $name );
     $self->_update_map( $self->source, 'cpan-' . $name );
