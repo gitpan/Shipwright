@@ -65,8 +65,8 @@ sub _run {
         @cmds = sub {
             my $cwd = getcwd();
             chdir $cloned_path;
-            run_cmd(
-                [ $ENV{'SHIPWRIGHT_GIT'}, 'pull' ] );
+            # can be failed if we are not in any branch, e.g. in a tag instead
+            run_cmd( [ $ENV{'SHIPWRIGHT_GIT'}, 'pull' ], 1 );
             chdir $cwd;
         };
     }
@@ -84,11 +84,10 @@ sub _run {
                 [ $ENV{'SHIPWRIGHT_GIT'}, 'checkout', $self->version ] );
         }
         else {
-            my ($out) = run_cmd(
-                [ $ENV{'SHIPWRIGHT_GIT'}, 'log' ] );
-            if ( $out =~ /^commit\s+(\w+)/m ) {
-                $self->version($1);
-            }
+            my ($version) = run_cmd(
+                [ $ENV{'SHIPWRIGHT_GIT'}, 'rev-parse', '--verify', 'HEAD' ] );
+            chomp $version;
+            $self->version( $version );
         }
         chdir $cwd;
         remove_tree( $path ) if -e $path;
