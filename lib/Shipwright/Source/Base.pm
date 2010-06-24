@@ -9,12 +9,13 @@ use Shipwright::Source;
 use Shipwright::Util;
 use Cwd qw/getcwd/;
 use File::Copy::Recursive qw/rcopy/;
+use UNIVERSAL::require;
 
 use base qw/Class::Accessor::Fast/;
 __PACKAGE__->mk_accessors(
     qw/source directory scripts_directory download_directory follow
       min_perl_version map_path skip map skip_recommends skip_all_recommends
-      include_dual_lifed
+      skip_installed include_dual_lifed
       keep_build_requires name log url_path version_path branches_path version/
 );
 
@@ -258,6 +259,7 @@ sub shipwright_recommends {
 
 sub shipwright_feature {
     my ( $name, @mods ) = @_;
+    my $type = $name && $name ne '-core' ? 'recommends' : 'requires';
     for ( my $i = 0 ; $i < @mods ; $i++ ) {
         if ( $mods[$i] eq '-default' ) {
             $i++;    # skip the -default value
@@ -265,11 +267,11 @@ sub shipwright_feature {
         elsif ( $mods[ $i + 1 ] =~ /^[\d\.]*$/ ) {
 
             # index $i+1 is a version
-            $shipwright_req->{recommends}{ $mods[$i] } = $mods[ $i + 1 ] || 0;
+            $shipwright_req->{$type}{ $mods[$i] } = $mods[ $i + 1 ] || 0;
             $i++;
         }
         else {
-            $shipwright_req->{recommends}{ $mods[$i] } = 0;
+            $shipwright_req->{$type}{ $mods[$i] } = 0;
         }
     }
     goto &feature;
@@ -278,6 +280,7 @@ sub shipwright_feature {
 sub shipwright_features {
     my @args = @_;
     while ( my ( $name, $mods ) = splice( @_, 0, 2 ) ) {
+        my $type = $name && $name ne '-core' ? 'recommends' : 'requires';
         for ( my $i = 0; $i < @$mods; $i++ ) {
             if ( $mods->[$i] eq '-default' ) {
                 $i++;
@@ -294,16 +297,16 @@ sub shipwright_features {
 # );
                for ( my $j = 0; $j < @{$mods->[$i]}; $j++ ) {
                     if ( ref $mods->[$i][$j] eq 'ARRAY' ) {
-                        $shipwright_req->{recommends}{$mods->[$i][$j][0]} 
+                        $shipwright_req->{$type}{$mods->[$i][$j][0]} 
                             = $mods->[$i][$j][1] || 0;
                     }
                     elsif ( $mods->[$i][$j+1] =~ /^[\d\.]*$/ ) {
-                        $shipwright_req->{recommends}{$mods->[$i][$j]} 
+                        $shipwright_req->{$type}{$mods->[$i][$j]} 
                             = $mods->[$i][$j+1] || 0;
                         $j++;
                     }
                     else {
-                        $shipwright_req->{recommends}{$mods->[$i][$j]} = 0;
+                        $shipwright_req->{$type}{$mods->[$i][$j]} = 0;
                     }
                 }
                 
@@ -312,11 +315,11 @@ sub shipwright_features {
 
             if ( $mods->[$i+1] =~ /^[\d\.]*$/ ) {
                 # index $i+1 is a version
-                $shipwright_req->{recommends}{$mods->[$i]} = $mods->[$i+1] || 0;
+                $shipwright_req->{$type}{$mods->[$i]} = $mods->[$i+1] || 0;
                 $i++;
             }
             else {
-                $shipwright_req->{recommends}{$mods->[$i]} = 0;
+                $shipwright_req->{$type}{$mods->[$i]} = 0;
             }
         }
     }
@@ -448,6 +451,25 @@ EOF
                     next;
                 }
 
+                if ( $self->skip_installed ) {
+                    if ( $module->require ) {
+                        $self->log->info("found installed $module");
+                        no strict 'refs'; ## no critic
+                        require version;
+                        my $installed_version = ${ $module . '::VERSION' };
+                        if ( $installed_version
+                            && version->parse($installed_version) >=
+                            version->parse($version) )
+                        {
+                            $self->log->info(
+"$module is skipped because it's installed and the version is good enough"
+                            );
+                            delete $require->{$type}{$module};
+                            next;
+                        }
+                    }
+                }
+
                 my $name = $module;
 
                 if ( $self->_is_skipped($module) ) {
@@ -511,7 +533,7 @@ EOF
                         unless ($s->run()) { 
                             # if run returns false, we should skip trying to install it.
                             # this lets us skip explicit dependencies that are actually part of the perl core
-                            #delete $require->{$type}{$module};
+                            delete $require->{$type}{$module};
                             chdir $cwd;
                             next;
 
@@ -630,6 +652,7 @@ sub _is_skipped {
             return 1;
         }
     }
+
     return;
 }
 
@@ -662,7 +685,7 @@ sub just_name {
     my $self = shift;
     my $name = shift;
 
-    $name =~ s/tar\.bz2$/tar.gz/;    # CPAN::DistnameInfo doesn't like bz2
+    $name =~ s/(?:tar\.bz2|zip)$/tar.gz/;    # CPAN::DistnameInfo likes .tar.gz
 
     $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz)$/;
 
@@ -681,7 +704,7 @@ return version
 sub just_version {
     my $self = shift;
     my $name = shift;
-    $name .= '.tar.gz' unless $name =~ /(tar\.gz|tgz|tar\.bz2)$/;
+    $name .= '.tar.gz' unless $name =~ /\.(tar\.gz|tgz|tar\.bz2|zip)$/;
 
     require CPAN::DistnameInfo;
     my $info    = CPAN::DistnameInfo->new($name);
@@ -698,7 +721,7 @@ return true if the source is compressed file, i.e. tar.gz(tgz) and tar.bz2
 
 sub is_compressed {
     my $self = shift;
-    return 1 if $self->source =~ m{\.(tar.(gz|bz2)|tgz)$};
+    return 1 if $self->source =~ m{\.(tar.(gz|bz2)|tgz|zip)$};
     return;
 }
 

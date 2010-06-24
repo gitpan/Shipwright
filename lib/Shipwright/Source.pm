@@ -85,13 +85,14 @@ sub type {
     }
 
     return 'Directory'  if $$source =~ s/^dir(?:ectory)?://i;
-    return 'Shipwright' if $$source =~ s/^shipwright://i;
+    return 'Shipyard' if $$source =~ s/^(?:shipyard|shipwright)://i;
 
     if ( $$source =~ s/^cpan://i ) {
 
-        # if it's not a distribution name, like
+        # if it's not a distribution name like
         # 'S/SU/SUNNAVY/IP-QQWry-v0.0.15.tar.gz', convert '-' to '::'.
-        $$source =~ s/-/::/g unless $$source =~ /\.tar\.gz$/;
+        $$source =~ s/-/::/g
+          unless $$source =~ /\.(?:tar\.(?:gz|bz2)|tgz|tbz)$/;
         return 'CPAN';
     }
 
