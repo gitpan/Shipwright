@@ -26,7 +26,7 @@ sub run {
           ( $default, grep { $_ ne $default } @{ $branches->{$name} } );
         $shipwright->backend->branches($branches);
         $self->log->fatal(
-            "set default branch for $name with success, now it's $default");
+            "successfully set default branch for $name, now it's $default");
     }
     else {
         confess_or_die "$name doesn't have branches $default.
@@ -49,6 +49,14 @@ Shipwright::Script::Defaultbranch - Set the default branch for a source
 =head1 DESCRIPTION
 
 See also L<Shipwright::Manual::UsingBranches>.
+
+=head1 GLOBAL OPTIONS
+
+ -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
+ -l [--log-level] LOGLEVEL      : specify the log level
+                                  (info, debug, warn, error, or fatal)
+ --log-file FILENAME            : specify the log file
+
 
 =head1 AUTHORS
 

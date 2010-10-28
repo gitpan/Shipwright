@@ -19,7 +19,7 @@ sub run {
 
     my $shipwright = Shipwright->new( repository => $self->repository, );
     $shipwright->backend->initialize();
-    $self->log->fatal( 'created with success' );
+    $self->log->fatal( 'successfully created' );
 }
 
 1;
@@ -37,6 +37,10 @@ Shipwright::Script::Create - Create a shipyard
  shipwright create -r svn:file:///tmp/foo/bar
  shipwright create -r git:file:///home/me/shipwright/my_proj.git
 
+=head1 OPTIONS
+
+ -f [--force]                   : delete the old shipyard if exists
+
 =head1 GLOBAL OPTIONS
 
  -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
@@ -44,9 +48,6 @@ Shipwright::Script::Create - Create a shipyard
                                   (info, debug, warn, error, or fatal)
  --log-file FILENAME            : specify the log file
 
-=head1 OPTIONS
-
- -f [--force]                   : delete the old shipyard if exists
 
 =head1 AUTHORS
 

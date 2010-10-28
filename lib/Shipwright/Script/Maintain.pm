@@ -7,7 +7,7 @@ use Shipwright::Util;
 use base qw/App::CLI::Command Class::Accessor::Fast Shipwright::Script/;
 __PACKAGE__->mk_accessors(
     qw/update_order update_refs graph_deps skip_recommends 
-      skip_build_requires skip_requires for_dists/
+      skip_build_requires skip_requires skip_test_requires for_dists/
 );
 
 use Shipwright;
@@ -20,6 +20,7 @@ sub options {
         'skip-recommends'     => 'skip_recommends',
         'skip-requires'       => 'skip_requires',
         'skip-build-requires' => 'skip_build_requires',
+        'skip-test-requires'  => 'skip_test_requires',
         'for-dists=s'         => 'for_dists',
     );
 }
@@ -33,9 +34,10 @@ sub run {
         $shipwright->backend->update_order(
             for_dists => [ split /,\s*/, $self->for_dists || '' ],
             map { $_ => $self->$_ }
-              qw/skip_requires skip_recommends skip_build_requires/,
+              qw/skip_requires skip_recommends skip_build_requires
+              skip_test_requires/,
         );
-        $self->log->fatal( 'updated order with success' );
+        $self->log->fatal( 'successfully updated order' );
     } 
     if ($self->graph_deps)  {
         my $out = $shipwright->backend->graph_deps(
@@ -48,7 +50,7 @@ sub run {
 
     if ( $self->update_refs ) {
         $shipwright->backend->update_refs;
-        $self->log->fatal( 'updated refs with success' );
+        $self->log->fatal( 'successfully updated refs' );
     }
 }
 
@@ -75,6 +77,13 @@ Shipwright::Script::Maintain - Maintain a shipyard
  --skip-requires              : skip requires when finding deps
  --skip-recommends            : skip recommends when finding deps
  --skip-build-requires        : skip build requires when finding deps
+
+=head1 GLOBAL OPTIONS
+
+ -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
+ -l [--log-level] LOGLEVEL      : specify the log level
+                                  (info, debug, warn, error, or fatal)
+ --log-file FILENAME            : specify the log file
 
 =head1 AUTHORS
 

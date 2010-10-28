@@ -85,7 +85,7 @@ sub _show_flags {
 
     my $flags_info;
     if ( $self->mandatory ) {
-        $self->log->fatal( 'set mandatory flags with success' ) if $changed;
+        $self->log->fatal( 'successfully set mandatory flags' ) if $changed;
         if ( @{ $flags->{__mandatory}{$name} || [] } ) {
             $flags_info = join ', ', @{ $flags->{__mandatory}{$name} };
         }
@@ -95,7 +95,7 @@ sub _show_flags {
         $self->log->fatal( "mandatory flags of $name are $flags_info" );
     }
     else {
-        $self->log->fatal( 'set flags with success' ) if $changed;
+        $self->log->fatal( 'successfully set flags' ) if $changed;
         if ( @{ $flags->{$name} || [] } ) {
             $flags_info =  join ', ', @{ $flags->{$name} };
         }
@@ -120,11 +120,6 @@ Shipwright::Script::Flags - Maintain flags
  shipwright flags mysql --add mysql
  shipwright flags cpan-DBD-mysql --add mysql
 
-=head1 OPTIONS
-
- --add, --delete, --set FLAGS   : specify the flags, split by commas
- --mandatory                    : set these flags as being required
-
 =head1 DESCRIPTION
 
 The flags command is used for managing the flags feature of Shipwright. Flags
@@ -134,6 +129,20 @@ software that requires a database, your repository can use flags to allow
 binary vessels to be built for both MySQL and PostgreSQL from it.
 
 For more information on using flags, see L<Shipwright::Manual::UsingFlags>.
+
+
+=head1 OPTIONS
+
+ --add, --delete, --set FLAGS   : specify the flags, split by commas
+ --mandatory                    : set these flags as being required
+
+=head1 GLOBAL OPTIONS
+
+ -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
+ -l [--log-level] LOGLEVEL      : specify the log level
+                                  (info, debug, warn, error, or fatal)
+ --log-file FILENAME            : specify the log file
+
 
 =head1 AUTHORS
 

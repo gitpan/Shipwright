@@ -56,7 +56,7 @@ sub _show_ktf {
     else {
         if ( defined $self->set ) {
             $self->log->fatal(
-                "set known test failure condition for $name with success");
+                "successfully set known test failure condition for $name");
         }
 
         $self->log->fatal( "the condition of $name is: " . ( $ktf->{$name} || 'undef' ) );
@@ -79,6 +79,14 @@ Shipwright::Script::Ktf - Maintain known test failure conditions
 
  --delete conditions            : delete conditions
  --set conditions               : set conditions
+
+=head1 GLOBAL OPTIONS
+
+ -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
+ -l [--log-level] LOGLEVEL      : specify the log level
+                                  (info, debug, warn, error, or fatal)
+ --log-file FILENAME            : specify the log file
+
 
 =head1 AUTHORS
 

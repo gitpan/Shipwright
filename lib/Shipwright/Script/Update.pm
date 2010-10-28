@@ -83,7 +83,7 @@ sub run {
         my $name = shift or confess_or_die 'need name arg';
         my $requires = $shipwright->backend->requires( name => $name ) || {};
         for my $dep ( @deps ) {
-            for my $type ( qw/requires build_requires recommends/ ) {
+            for my $type ( qw/requires build_requires recommends test_requires/ ) {
                 delete $requires->{$type}{$dep} if $requires->{$type};
             }
 
@@ -153,7 +153,11 @@ sub run {
 
                     my ($require) =
                       $shipwright->backend->requires( name => $name );
-                    for my $type (qw/requires build_requires recommends/) {
+                    for my $type (
+                        qw/requires build_requires recommends
+                        test_requires/
+                      )
+                    {
                         for ( keys %{ $require->{$type} } ) {
                             $find_deps->($_);
                         }
@@ -204,7 +208,7 @@ sub run {
             }
         }
     }
-    $self->log->fatal( 'updated with success' );
+    $self->log->fatal( 'successfully updated' );
 }
 
 sub _update {
@@ -300,6 +304,13 @@ with --only-sources, only sources will be updated, scripts won't.
 
 The update command can also be used to update shipyard's own files like
 builder, utility and the inc directory.
+
+=head1 GLOBAL OPTIONS
+
+ -r [--repository] REPOSITORY   : specify the repository uri of our shipyard
+ -l [--log-level] LOGLEVEL      : specify the log level
+                                  (info, debug, warn, error, or fatal)
+ --log-file FILENAME            : specify the log file
 
 =head1 ALIASES
 
