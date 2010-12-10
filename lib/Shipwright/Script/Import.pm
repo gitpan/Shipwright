@@ -59,10 +59,14 @@ sub run {
 
     my $shipwright = Shipwright->new( repository => $self->repository, );
 
+    my $order      = $shipwright->backend->order || []; 
+    my $installed  = { map { $_ => 1 } @$order };
+
     if ( $self->name && !$source ) {
 
         # don't have source specified, use the one in repo
         my $map        = $shipwright->backend->map    || {};
+
         my $source_yml = $shipwright->backend->source || {};
         my $branches   = $shipwright->backend->branches;
 
@@ -125,6 +129,7 @@ sub run {
                 include_dual_lifed     => $self->include_dual_lifed,
                 skip                   => $self->skip,
                 version                => $self->version,
+                installed              => $installed,
                 skip_recommends        => $self->skip_recommends,
                 skip_all_recommends    => $self->skip_all_recommends,
                 skip_all_test_requires => $self->skip_all_test_requires,
@@ -178,8 +183,12 @@ sub run {
                 );
 
                 if ( my $script = $self->build_script ) {
-                    copy( $self->build_script,
-                        catfile( $script_dir, 'build' ) );
+                    if ( $script =~ /\.pl$/ ) {
+                        copy( $script, catfile( $script_dir, 'build.pl' ) );
+                    }
+                    else {
+                        copy( $script, catfile( $script_dir, 'build' ) );
+                    }
                 }
                 else {
                     $self->_generate_build( $source, $script_dir, $shipwright );
@@ -442,6 +451,7 @@ Shipwright::Script::Import - Import sources and their dependencies
  --skip-recommends              : specify a list of sources of which recommends 
                                   not to import
  --skip-all-recommends          : skip all the recommends to import
+ --skip-all-test-requires       : skip all the test requires to import
  --skip-installed               : skip all the installed modules to import
  --include-dual-lifed           : include modules which live both in the perl core 
                                   and on CPAN
