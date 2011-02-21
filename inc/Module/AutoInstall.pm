@@ -353,7 +353,9 @@ sub install {
         @modules = @newmod;
     }
 
-    if ( _has_cpanplus() and not $ENV{PERL_AUTOINSTALL_PREFER_CPAN} ) {
+    if ( $ENV{PERL_AUTOINSTALL_PREFER_CPANMINUS} ) {
+        _install_cpanminus(\@modules, \@config);
+    } elsif ( _has_cpanplus() and not $ENV{PERL_AUTOINSTALL_PREFER_CPAN} ) {
         _install_cpanplus( \@modules, \@config );
     } else {
         _install_cpan( \@modules, \@config );
@@ -374,6 +376,22 @@ sub install {
     close FAILED if $args{do_once};
 
     return @installed;
+}
+
+sub _install_cpanminus {
+    my %modules   = @{ +shift };
+    my @config    = @{ +shift };
+    my $installed = 0;
+    my $cpanm = $ENV{PERL_AUTOINSTALL_CPANMINUS} || 'cpanm';
+    if ( system( "cpanm " . join ' ', keys %modules ) ) {
+        print << ".";
+*** Some packages are not installed successfully.
+.
+    }
+    else {
+        $installed += keys %modules;
+    }
+    return $installed;
 }
 
 sub _install_cpanplus {
@@ -817,4 +835,4 @@ END_MAKE
 
 __END__
 
-#line 1071
+#line 1089
