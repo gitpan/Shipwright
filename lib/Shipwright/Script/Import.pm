@@ -75,8 +75,10 @@ sub run {
             $source = 'cpan:' . $r_map->{ $self->name };
         }
         elsif ($branches) {
-            $source = $source_yml->{ $self->name }{ $self->as
-                  || $branches->{ $self->name }[0] };
+            $source = $source_yml->{ $self->name };
+            if ( ref $source ) {
+                $source = $source->{ $self->as || $branches->{ $self->name }[0] };
+            }
         }
         else {
             $source = $source_yml->{$self->name};
@@ -215,16 +217,21 @@ sub run {
 
             my $branches =
               load_yaml_file( $shipwright->source->branches_path );
+            $branches ||= {} if
 
             $self->log->fatal( "importing $name" );
             $shipwright->backend->import(
                 source  => $source,
                 comment => $self->comment || 'import ' . $source,
-# import anyway for the main dist, unless it's already imported in this run
-                overwrite => $imported{$name} ? 0 : 1, 
+
+     # import anyway for the main dist, unless it's already imported in this run
+                overwrite => $imported{$name} ? 0 : 1,
                 version   => $version->{$name},
                 as        => $self->as,
-                branches => $branches->{$name},
+                branches =>
+                  $shipwright->source->isa('Shipwright::Source::Shipyard')
+                ? ( $branches->{$name} || [] )
+                : (undef),
             );
 
             $shipwright->backend->import(
@@ -247,10 +254,18 @@ sub run {
               || {};
             my $source_url = delete $new_url->{$name};
 
-            if ( $name !~ /^cpan-/ ) {
+            if (   $name !~ /^cpan-/
+                || $shipwright->source->isa('Shipwright::Source::Shipyard') )
+            {
                 my $source = $shipwright->backend->source || {};
-                $source->{$name}{$self->as||'vendor'} = $source_url;
-                $shipwright->backend->source( $source );
+                if ( $shipwright->source->isa('Shipwright::Source::Shipyard') )
+                {
+                    $source->{$name} = $source_url;
+                }
+                else {
+                    $source->{$name}{ $self->as || 'vendor' } = $source_url;
+                }
+                $shipwright->backend->source($source);
             }
         }
 
@@ -336,7 +351,10 @@ sub _import_req {
                         source    => $s,
                         overwrite => $self->overwrite,
                         version   => $version->{$dist},
-                        branches  => $branches->{$dist},
+                        branches  => $shipwright->source->isa(
+                            'Shipwright::Source::Shipyard')
+                        ? ( $branches->{$dist} || [] )
+                        : (undef),
                     );
                     $shipwright->backend->import(
                         source       => $s,
@@ -344,6 +362,19 @@ sub _import_req {
                         build_script => $script_dir,
                         overwrite    => $self->overwrite,
                     );
+                    if (
+                        $shipwright->source->isa(
+                            'Shipwright::Source::Shipyard')
+                      )
+                    {
+                        my $new_url =
+                          load_yaml_file( $shipwright->source->url_path )
+                          || {};
+                        my $source_url = delete $new_url->{$dist};
+                        my $source = $shipwright->backend->source || {};
+                        $source->{$dist} = $source_url;
+                        $shipwright->backend->source($source);
+                    }
                 }
             }
         }
