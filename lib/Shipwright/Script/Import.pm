@@ -7,7 +7,9 @@ use base qw/App::CLI::Command Shipwright::Base Shipwright::Script/;
 __PACKAGE__->mk_accessors(
     qw/comment no_follow build_script require_yml include_dual_lifed
       name test_script extra_tests overwrite min_perl_version skip version as
-      skip_recommends skip_all_test_requires skip_all_recommends skip_installed/
+      skip_recommends skip_all_test_requires skip_all_recommends skip_installed
+      no_default_build skip_all_build_requires
+      /
 );
 
 use Shipwright;
@@ -20,23 +22,25 @@ use List::MoreUtils qw/firstidx/;
 
 sub options {
     (
-        'm|comment=s'            => 'comment',
-        'name=s'                 => 'name',
-        'no-follow'              => 'no_follow',
-        'build-script=s'         => 'build_script',
-        'require-yml=s'          => 'require_yml',
-        'test-script'            => 'test_script',
-        'extra-tests'            => 'extra_tests',
-        'overwrite'              => 'overwrite',
-        'min-perl-version=s'     => 'min_perl_version',
-        'skip=s'                 => 'skip',
-        'version=s'              => 'version',
-        'as=s'                   => 'as',
-        'skip-recommends=s'      => 'skip_recommends',
-        'skip-all-recommends'    => 'skip_all_recommends',
-        'skip-all-test-requires' => 'skip_all_test_requires',
-        'skip-installed'         => 'skip_installed',
-        'include-dual-lifed'     => 'include_dual_lifed'
+        'm|comment=s'             => 'comment',
+        'name=s'                  => 'name',
+        'no-follow'               => 'no_follow',
+        'build-script=s'          => 'build_script',
+        'require-yml=s'           => 'require_yml',
+        'test-script'             => 'test_script',
+        'extra-tests'             => 'extra_tests',
+        'overwrite'               => 'overwrite',
+        'min-perl-version=s'      => 'min_perl_version',
+        'skip=s'                  => 'skip',
+        'version=s'               => 'version',
+        'as=s'                    => 'as',
+        'skip-recommends=s'       => 'skip_recommends',
+        'skip-all-recommends'     => 'skip_all_recommends',
+        'skip-all-test-requires'  => 'skip_all_test_requires',
+        'skip-all-build-requires' => 'skip_all_build_requires',
+        'skip-installed'          => 'skip_installed',
+        'include-dual-lifed'      => 'include_dual_lifed',
+        'no-default-build'        => 'no_default_build',
     );
 }
 
@@ -109,9 +113,9 @@ sub run {
 
         if ( $self->name ) {
             if ( $self->name =~ /::/ ) {
-                $self->log->warn(
-                    "we saw '::' in the name, will treat it as '-'");
                 my $name = $self->name;
+                $self->log->warn(
+                    "$name contains '::', will treat it as '-'");
                 $name =~ s/::/-/g;
                 $self->name($name);
             }
@@ -122,20 +126,37 @@ sub run {
         }
 
         for my $source (@sources) {
+            if ( $source =~ /perl-\d+/ ) {
+                $source = "http://www.cpan.org/src/$source";
+            }
+            elsif ( $source eq 'perl' ) {
+                if ( $self->version ) {
+                    $source =
+                        "http://www.cpan.org/src/perl-"
+                      . $self->version
+                      . '.tar.gz';
+                }
+                else {
+                    confess_or_die
+                      "unknown perl version, please specify --version";
+                }
+            }
+
             my $shipwright = Shipwright->new(
-                repository             => $self->repository,
-                source                 => $source,
-                name                   => $self->name,
-                follow                 => !$self->no_follow,
-                min_perl_version       => $self->min_perl_version,
-                include_dual_lifed     => $self->include_dual_lifed,
-                skip                   => $self->skip,
-                version                => $self->version,
-                installed              => $installed,
-                skip_recommends        => $self->skip_recommends,
-                skip_all_recommends    => $self->skip_all_recommends,
-                skip_all_test_requires => $self->skip_all_test_requires,
-                skip_installed         => $self->skip_installed,
+                repository              => $self->repository,
+                source                  => $source,
+                name                    => $self->name,
+                follow                  => !$self->no_follow,
+                min_perl_version        => $self->min_perl_version,
+                include_dual_lifed      => $self->include_dual_lifed,
+                skip                    => $self->skip,
+                version                 => $self->version,
+                installed               => $installed,
+                skip_recommends         => $self->skip_recommends,
+                skip_all_recommends     => $self->skip_all_recommends,
+                skip_all_test_requires  => $self->skip_all_test_requires,
+                skip_all_build_requires => $self->skip_all_build_requires,
+                skip_installed          => $self->skip_installed,
             );
 
             confess_or_die "cpan dists can't be branched"
@@ -192,10 +213,9 @@ sub run {
                         copy( $script, catfile( $script_dir, 'build' ) );
                     }
                 }
-                else {
+                elsif ( ! $self->no_default_build ) {
                     $self->_generate_build( $source, $script_dir, $shipwright );
                 }
-
             }
 
             if ( $self->no_follow ) {
@@ -283,6 +303,9 @@ sub _import_req {
     my $shipwright = shift;
     my $script_dir = shift;
 
+    my $name = (splitdir( $source ))[-1];
+    $self->log->info( "going to import requirements for $name" );
+
     my $require_file = catfile( $source, '__require.yml' );
     $require_file = catfile( $script_dir, 'require.yml' )
       unless -e catfile( $source, '__require.yml' );
@@ -314,12 +337,12 @@ sub _import_req {
                     my ($name) = grep { $_ eq $dist } @sources;
                     unless ($name) {
                         $self->log->warn(
-                            "we don't have $dist in source which is for "
+                            "missing $dist in source which is for "
                               . $source );
                         next;
                     }
 
-                    $self->log->fatal( "importing $name" );
+                    $self->log->fatal( "import $name" );
                     my $s = catdir( $dir, $name );
 
                     my $script_dir;
@@ -392,7 +415,7 @@ sub _generate_build {
     my $shipwright = shift;
 
     my @commands;
-    if ( -f catfile( $source_dir, 'Build.PL' ) ) { # &&  $source_dir !~ /Module-Build/ ) { # M::B should be bootstrapped with MakeMaker
+    if ( -f catfile( $source_dir, 'Build.PL' ) ) {
         $self->log->info( 'detected Module::Build build system' );
         @commands = (
             'configure: %%PERL%% %%MODULE_BUILD_BEFORE_BUILD_PL%% Build.PL --install_base=%%INSTALL_BASE%% --install_path lib=%%INSTALL_BASE%%/lib/perl5 --install_path arch=%%INSTALL_BASE%%/lib/perl5',
@@ -429,7 +452,7 @@ sub _generate_build {
 unknown build system for this dist; you MUST manually edit /scripts/$name/build 
 or provide a build.pl file or this dist will not be built!
 EOF
-        $self->log->warn("I have no idea how to build this distribution");
+        $self->log->warn("no idea how to build $source_dir");
 
         # stub build file to provide the user something to go from
         @commands = (
@@ -483,9 +506,11 @@ Shipwright::Script::Import - Import sources and their dependencies
                                   not to import
  --skip-all-recommends          : skip all the recommends to import
  --skip-all-test-requires       : skip all the test requires to import
+ --skip-all-build-requires      : skip all the build requires to import
  --skip-installed               : skip all the installed modules to import
  --include-dual-lifed           : include modules which live both in the perl core 
                                   and on CPAN
+ --no-default-build             : don't try to detect and set build system
  
 =head1 DESCRIPTION
 
@@ -573,7 +598,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2011 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

@@ -91,13 +91,13 @@ sub run_cmd {
     my $log = Log::Log4perl->get_logger('Shipwright::Util');
 
     my ( $out, $err );
-    $log->info( "run cmd: " . join ' ', @$cmd );
+    $log->info( "running cmd: " . join ' ', @$cmd );
     select_fh('null');
     run3( $cmd, undef, \$out, \$err );
     select_fh('stdout');
 
-    $log->debug("run output:\n$out") if $out;
-    $log->error("run err:\n$err")   if $err;
+    $log->debug("output:\n$out") if $out;
+    $log->error("err:\n$err")   if $err;
 
     if ($?) {
         $log->error(
@@ -290,7 +290,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007-2010 Best Practical Solutions.
+Copyright 2007-2011 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

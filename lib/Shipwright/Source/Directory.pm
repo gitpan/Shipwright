@@ -27,12 +27,10 @@ sub new {
 
 sub run {
     my $self = shift;
-    $self->log->info(
-        'run source ' . ( $self->name || $self->path ) . ': ' . $self->source );
 
     $self->name( $self->just_name( $self->path ) )       unless $self->name;
     $self->version( $self->just_version( $self->path ) ) unless $self->version;
-    $self->log->info( 'run source ' . $self->name . ': ' . $self->source );
+    $self->log->info( 'running source ' . $self->name . ': ' . $self->source );
 
     $self->_update_version( $self->name, $self->version );
 
@@ -85,7 +83,7 @@ sunnavy C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007-2010 Best Practical Solutions LLC.
+Copyright 2007-2011 Best Practical Solutions LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

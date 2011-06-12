@@ -17,7 +17,7 @@ __PACKAGE__->mk_accessors(
       min_perl_version map_path skip map skip_recommends skip_all_recommends
       skip_installed include_dual_lifed
       keep_build_requires name log url_path version_path branches_path version
-      skip_all_test_requires installed
+      skip_all_test_requires skip_all_build_requires installed 
       /
 );
 
@@ -96,6 +96,7 @@ sub _follow {
       || $self->skip_all_recommends;
     push @types, 'recommends' unless $skip_recommends;
     push @types, 'test_requires' unless $self->skip_all_test_requires;
+    push @types, 'build_requires' unless $self->skip_all_build_requires;
 
     if ( !-e $require_path ) {
 
@@ -104,7 +105,7 @@ sub _follow {
         chdir catdir($path);
 
         if ( $path =~ /\bcpan-Bundle-(.*)/ ) {
-            $self->log->info("is a CPAN Bundle");
+            $self->log->info("$path is a CPAN Bundle distribution");
 
             my $file = $1;
             $file =~ s!-!/!;
@@ -149,7 +150,7 @@ sub _follow {
 
         }
         elsif ( -e 'Build.PL' ) {
-            $self->log->info("is a Module::Build based dist");
+            $self->log->info("$path is a Module::Build based distribution");
 
             run_cmd(
                 [
@@ -175,7 +176,8 @@ sub _follow {
             my $makefile = read_file('Makefile.PL')
               or confess_or_die "can't read Makefile.PL: $!";
             if ( $makefile =~ /inc::Module::Install/ ) {
-                $self->log->info("is a Module::Install based dist");
+                $self->log->info(
+                    "$path is a Module::Install based distribution");
 
                 # in case people call another file, which contains
                 # keywords like requires, features, etc 
@@ -454,13 +456,17 @@ EOF
                     next;
                 }
 
-                my $version = $require->{$type}{$module}{version} || 0;
+                my $version =
+                  ref $require->{$type}{$module}
+                  ? $require->{$type}{$module}{version}
+                  : $require->{$type}{$module};
+                $version ||= 0;
                 $version =~ s!^\D+!!; # some may contain '>' or '>=' 
                 if ( !$self->include_dual_lifed 
                     && Module::CoreList->first_release( $module, $version )
                     && Module::CoreList->first_release( $module, $version ) <= $self->min_perl_version)
                 {
-                    $self->log->info("Skipping $module because it's in core");
+                    $self->log->info("skipping $module because it's in core");
                     delete $require->{$type}{$module};
                     next;
                 }
@@ -476,8 +482,7 @@ EOF
                             version->parse($version) )
                         {
                             $self->log->info(
-"Skipping $module because a new enough version is already installed"
-                            );
+                                "skipping $module because it's installed" );
                             delete $require->{$type}{$module};
                             next;
                         }
@@ -573,6 +578,7 @@ EOF
         # them when update later
         $require->{recommends} = {} if $skip_recommends;
         $require->{test_requires} = {} if $self->skip_all_test_requires;
+        $require->{build_requires} = {} if $self->skip_all_build_requires;
 
         dump_yaml_file( $require_path, $require );
     }
@@ -658,8 +664,17 @@ sub _is_skipped {
               if $self->skip->{$name} || $self->skip->{$name_without_prefix};
         }
 
+        my @spaces = grep { /::$/ } keys %{$self->skip};
+        for my $space ( @spaces ) {
+            # we want to skip both Foo and Foo::*
+            if ( "${module}::" =~ /^$space/ ) {
+                $skip = 1;
+                last;
+            }
+        }
+
         if ($skip) {
-            $self->log->info("$module is skipped");
+            $self->log->info("skipping $module");
             return 1;
         }
     }
@@ -791,7 +806,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2011 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

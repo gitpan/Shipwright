@@ -15,7 +15,7 @@ use Shipwright::Util;
 
 sub run {
     my $self = shift;
-    $self->log->info( "prepare to run source: " . $self->source );
+    $self->log->info( "preparing to run source: " . $self->source );
     if ( $self->_run ) {
         my $compressed =
           Shipwright::Source::Compressed->new( %$self, _no_update_url => 1 );
@@ -55,7 +55,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007-2010 Best Practical Solutions.
+Copyright 2007-2011 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

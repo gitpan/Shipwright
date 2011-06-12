@@ -19,7 +19,7 @@ sub run {
 
     $self->name( $self->just_name( $self->path ) )       unless $self->name;
     $self->version( $self->just_version( $self->path ) ) unless $self->version;
-    $self->log->info( 'run source ' . $self->name . ': ' . $self->source );
+    $self->log->info( 'running source ' . $self->name . ': ' . $self->source );
 
     $self->_update_version( $self->name, $self->version );
 
@@ -56,11 +56,14 @@ sub path {
     my $files = $ae->files;
 
     my $base_dir = $files->[0];
+    # some compressed file has name like ./PerlImagick-6.67/
+    $base_dir =~ s!^\.[/\\]!!;
+
 # sunnavy found that the 1st file is not the directory name when extracting
 # HTML-Strip-1.06.tar.gz, which is weird but valid compressed file.
     $base_dir =~ s![/\\].*!!; 
 
-    if ( @$files != grep { /^\Q$base_dir\E/ } @$files ) {
+    if ( @$files != grep { /^(?:\.[\/\\])?\Q$base_dir\E/ } @$files ) {
         confess_or_die 'only support compressed file which contains only one directory: '
           . $base_dir;
     }
@@ -107,7 +110,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright 2007-2010 Best Practical Solutions.
+Copyright 2007-2011 Best Practical Solutions.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

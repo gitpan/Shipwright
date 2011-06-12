@@ -383,7 +383,7 @@ sub _install_cpanminus {
     my @config    = @{ +shift };
     my $installed = 0;
     my $cpanm = $ENV{PERL_AUTOINSTALL_CPANMINUS} || 'cpanm';
-    if ( system( "cpanm " . join ' ', keys %modules ) ) {
+    if ( system( join ' ', $cpanm, keys %modules ) ) {
         print << ".";
 *** Some packages are not installed successfully.
 .

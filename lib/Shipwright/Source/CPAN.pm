@@ -84,7 +84,7 @@ sub new {
 
 sub run {
     my $self = shift;
-    $self->log->info( "prepare to run source: " . $self->source );
+    $self->log->info( "preparing to run source: " . $self->source );
 
     my $result = $self->_run;
     if ( $result && $result == 1) {
@@ -103,7 +103,7 @@ sub run {
                          #deletion
         confess_or_die $error;
     } else {
-            $self->log->warn("Removing source ".$self->source);
+            $self->log->warn("removing source ".$self->source);
             return;
     }
 }
@@ -167,13 +167,14 @@ sub _run {
     my $name = CPAN::DistnameInfo->new( $distribution->{ID} )->dist;
 
     if (!$name ) {
-        $self->log->warn("You asked to install ".$self->source. " but it isn't on the CPAN. Skipping");
+        $self->log->warn("skipping " . $self->source . " because it's not on CPAN");
         return -1;
     }
     elsif ( $name eq 'perl' ) {
-        $self->log->warn( 'perl itself contains ' . $self->source . ', will not process');
+        $self->log->warn(
+            'skipping ' . $self->source . " because it's in core" );
         return -1;
-    } 
+    }
 
     select_fh('stdout');
 
@@ -202,7 +203,7 @@ sunnavy  C<< <sunnavy@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Shipwright is Copyright 2007-2010 Best Practical Solutions, LLC.
+Shipwright is Copyright 2007-2011 Best Practical Solutions, LLC.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
