@@ -2,9 +2,10 @@ package Shipwright::Source::Directory;
 use strict;
 use warnings;
 use Shipwright::Util;
-use File::Spec::Functions qw/catdir/;
+use File::Spec::Functions qw/catfile catdir rel2abs/;
 use File::Basename;
 use File::Copy::Recursive qw/rcopy/;
+use Cwd qw/getcwd/;
 
 use base qw/Shipwright::Source::Base/;
 
@@ -17,7 +18,7 @@ sub new {
     my $self  = $class->SUPER::new(@_);
     my $s     = $self->source;
     $s =~ s{/$}{};    # trim the last / to let cp work as we like
-    $self->source($s);
+    $self->source(rel2abs $s);
     return $self;
 }
 
@@ -69,7 +70,22 @@ sub _cmd {
         $self->name || $self->just_name( $self->path ) );
     return if -e $to;
 
-    return sub { rcopy( $self->source, $to ) };
+    if (   -e catfile( $self->source, 'dist.ini' )
+        && !-e catfile( $self->source, 'configure' )
+        && !-e catfile( $self->source, 'Makefile.PL' )
+        && !-e catfile( $self->source, 'Build.PL' ) )
+    {
+        my $old = getcwd();
+        # assume it's a Dist::Zilla dist
+        return sub {
+            chdir $self->source;
+            run_cmd( [ $ENV{SHIPWRIGHT_DZIL}, 'build', '--in', $to ] );
+            chdir $old;
+        };
+    }
+    else {
+        return sub { rcopy( $self->source, $to ) };
+    }
 }
 
 1;
