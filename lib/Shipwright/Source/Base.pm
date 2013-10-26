@@ -197,8 +197,8 @@ sub _follow {
   # will omit features(..). we'll put deps in features(...) into recommends part
 
                 $makefile =~ s/^\s*requires(?!\w)/shipwright_requires/mg;
-                $makefile =~
-s/^\s*(?:build|configure)_requires(?!\w)/shipwright_build_requires/mg;
+                $makefile =~ s/^\s*build_requires(?!\w)/shipwright_build_requires/mg;
+                $makefile =~ s/^\s*configure_requires(?!\w)/shipwright_configure_requires/mg;
                 $makefile =~
                   s/^\s*test_requires(?!\w)/shipwright_test_requires/mg;
                 $makefile =~ s/^\s*recommends(?!\w)/shipwright_recommends/mg;
@@ -228,6 +228,11 @@ sub shipwright_requires {
 sub shipwright_build_requires {
     _shipwright_requires( 'build_requires', @_ == 1 ? ( @_, 0 ) : @_ );
     goto &build_requires;
+}
+
+sub shipwright_configure_requires {
+    _shipwright_requires( 'configure_requires', @_ == 1 ? ( @_, 0 ) : @_ );
+    goto &configure_requires;
 }
 
 sub shipwright_test_requires {
@@ -410,15 +415,37 @@ EOF
                 run_cmd( [ $^X, 'Makefile.PL' ] )
                   if $? || !-e 'Makefile';
 
-                my ($source) = grep { /PREREQ_PM/ } read_file('Makefile');
+                my @makefile = read_file('Makefile');
+                my ($source) = grep { /PREREQ_PM/ } @makefile;
                 if ( $source && $source =~ /({.*})/ ) {
                     my $eval .= '$require = ' . $1;
                     $eval =~ s/([\w:]+)=>/'$1'=>/g;
                     eval "$eval;1" or confess_or_die "eval error: $@";    ## no critic
+
+                    for ( keys %$require ) {
+                        $require->{requires}{$_} = delete $require->{$_};
+                    }
                 }
 
-                for ( keys %$require ) {
-                    $require->{requires}{$_} = delete $require->{$_};
+                my %requires_map = (
+                    PREREQ_PM          => 'requires',
+                    BUILD_REQUIRES     => 'build_requires',
+                    TEST_REQUIRES      => 'test_requires',
+                    CONFIGURE_REQUIRES => 'configure_requires',
+                );
+
+                for my $item ( keys %requires_map ) {
+                    my ($source) = grep { /$item/ } @makefile;
+                    if ( $source && $source =~ /({.*})/ ) {
+                        my $tmp_requires;
+                        my $eval .= '$tmp_requires = ' . $1;
+                        $eval =~ s/([\w:]+)=>/'$1'=>/g;
+                        eval "$eval;1" or confess_or_die "eval error: $@";    ## no critic
+
+                        for ( keys %$tmp_requires ) {
+                            $require->{$requires_map{$item}}{$_} = delete $tmp_requires->{$_};
+                        }
+                    }
                 }
 
             }
